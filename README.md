@@ -98,7 +98,7 @@ sudo apt-get update
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-Clone your `n8n` project directory and create data storage:
+Clone project directory and create data storage:
 ```sh
 git clone https://github.com/lexmaister/ai_robotics_news_bot.git
 cd ai_robotics_news_bot
