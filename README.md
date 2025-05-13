@@ -35,7 +35,7 @@ A **self-hosted, fully automated Telegram bot** that curates and delivers the mo
 
 ### 2. Remote connection to Linux server with RDP via SSH tunnel
 
-To connect to your remote host with n8n via SSH tunnel, you can use Remmina (or any other RDP client) to create a secure connection. RDP (Remote Desktop Protocol) allows you to access the graphical interface of your remote server, making it easier to manage and monitor your n8n instance.
+To connect to your remote host with `n8n` via SSH tunnel, you can use Remmina (or any other RDP client) to create a secure connection. RDP (Remote Desktop Protocol) allows you to access the graphical interface of your remote server with its browser to manage and monitor your `n8n` instance.
 
 #### Installing XORG and XRDP on remote host
 
