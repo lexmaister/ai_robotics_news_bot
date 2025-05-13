@@ -1,0 +1,1003 @@
+{
+  "name": "newsdata.io",
+  "nodes": [
+    {
+      "parameters": {
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a professional editor specializing in AI and Robotics news for a discerning audience. You receive a list of recent articles. Your task is to select the 5 most interesting and relevant articles for publication. Carefully follow these criteria:\n\nFocus on including both Artificial Intelligence and Robotics news, whenever possible. Prioritize practical, real-world examples of how AI and robotics are being applied or adopted across industries, services, or daily life. Exclude purely scientific updates or breakthroughs that are still years away from real application. Prefer global news or stories with international impact over regional or niche developments.\n\nDiversity: Choose news covering a range of topics or perspectives. Avoid selecting articles that are very similar in content or subject. \n\nRelevance: Prioritize stories with significant technological, scientific, or societal impact in the fields of both AI and robotics.\n\nNovelty: Include at most one article that is funny, unusual, or surprising, for reader variety—but keep the main focus on meaningful advancements or insights.\n\nExclusions:\nDo NOT include financial news, investment updates, funding rounds, product launches/advertising, entertainment (games, movies), graduating or celebrity features.\n\nExclude press releases or marketing disguised as news.\n\nSubstance: Favor in-depth pieces that offer new findings, breakthrough research, novel applications, ethical debates, or transformative real-world implications.\nGlobal perspective: If possible, include news from a variety of regions or cultures for broader context.\n\nOutput:\nReturn a JSON array with only the IDs of the selected articles, in order of editorial priority.\nExample: [24, 31, 17, 8, 27]\n\nIf there are fewer than 5 eligible articles, return only those that meet the above criteria, but at least 1."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        300,
+        -160
+      ],
+      "id": "c88a987e-bf3a-47e8-8ada-d90b2a19466d",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "mistral-large-latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        360,
+        140
+      ],
+      "id": "04084e3c-b8fc-4669-942d-a19d7d1f5ff7",
+      "name": "Mistral Cloud Chat Model",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "SISSnvV3LZ4MYw2f",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "chatInput",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        140,
+        -160
+      ],
+      "id": "4dda1810-8ba4-42e7-9757-252b8f149d66",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"best_news\": [2, 15, 45]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        140
+      ],
+      "id": "5006b2bd-ee89-4167-850c-c8b8d4f83c80",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "id": "b232716c-1e6f-43db-9a66-b1ea3febd600",
+      "name": "Auto-fixing Output Parser"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        360,
+        -460
+      ],
+      "id": "25b4d444-f6e5-455d-8f6f-13e0ce6adb4c",
+      "name": "Results Array"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "12ba4226-2827-4a90-aa9e-76ef56cd3358",
+              "name": "article_id",
+              "value": "={{ $json.article_id }}",
+              "type": "string"
+            },
+            {
+              "id": "e9c76173-18a7-45ee-9a96-ae4e4a47f817",
+              "name": "title",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "3607d46c-9f58-48d8-8564-ff3a9b49d38b",
+              "name": "description",
+              "value": "={{ $json.description }}",
+              "type": "string"
+            },
+            {
+              "id": "d69cae23-ebdb-4c07-bd89-81e8aa9c0844",
+              "name": "link",
+              "value": "={{ $json.link }}",
+              "type": "string"
+            },
+            {
+              "id": "9776a6d2-e192-46b2-a1b0-32650482d496",
+              "name": "pub_dt",
+              "value": "={{ $json.pubDate }}",
+              "type": "string"
+            },
+            {
+              "id": "c6783038-da09-481b-835a-04103cb80260",
+              "name": "source_priority",
+              "value": "={{ $json.source_priority }}",
+              "type": "number"
+            },
+            {
+              "id": "f2288bf2-0e6e-4593-af2c-8399173627ec",
+              "name": "category",
+              "value": "={{ $json.category }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        520,
+        -460
+      ],
+      "id": "ea222241-b013-40e2-ae05-7e83186e199c",
+      "name": "Filter Redundant Fields"
+    },
+    {
+      "parameters": {
+        "content": "## Collect news from newsdata.io and save to database",
+        "height": 600,
+        "width": 1640
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -40,
+        -860
+      ],
+      "typeVersion": 1,
+      "id": "af2305dd-5a11-4a49-ae09-39324f13af21",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Find the best news from today that have not been posted yet",
+        "height": 520,
+        "width": 1180,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -40,
+        -220
+      ],
+      "typeVersion": 1,
+      "id": "d92a777e-03ad-41cd-9ff1-8a78769bf7d3",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE newsdata_io\nSET posted = 1\nWHERE id in ({{ $json.output.best_news }})",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        980,
+        -60
+      ],
+      "id": "a9e54375-031c-441b-8b1e-e375db66f44e",
+      "name": "Set Posted",
+      "credentials": {
+        "mySql": {
+          "id": "yip8VsvixHpsJs0K",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  title, \n  CASE\n    WHEN CHAR_LENGTH(description) <= 200 THEN description\n    ELSE CONCAT(LEFT(description, 200), ' ...')\n  END AS description,\n  link\nFROM newsdata_io\nWHERE id in ({{ $json.output.best_news}})",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1400,
+        -120
+      ],
+      "id": "225c413f-b4bd-42b0-bd9b-56ab8cd7f70e",
+      "name": "Get Best News Data",
+      "credentials": {
+        "mySql": {
+          "id": "yip8VsvixHpsJs0K",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "@robotics_ai_news",
+        "text": "=*{{$json[\"title\"]}}*\n\n[Read full article]({{$json[\"link\"]}})\n\n#newsdata",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1240,
+        120
+      ],
+      "id": "434d7470-1c87-42dd-9ea5-26d1999b0e11",
+      "name": "Telegram",
+      "webhookId": "2971bcc2-d1a8-4049-9dd0-54a7b86fe295",
+      "credentials": {
+        "telegramApi": {
+          "id": "K1LZIFVas5SsLCCN",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Post to [AI & Robotic News](https://t.me/robotics_ai_news)",
+        "height": 520,
+        "width": 440,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1160,
+        -220
+      ],
+      "typeVersion": 1,
+      "id": "0a74502d-2d63-466d-adf7-4b7e55de9ad4",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        1240,
+        -120
+      ],
+      "id": "b3fa959d-6e9e-4ad0-8cfe-b9a1d8894ef0",
+      "name": "Wait Updating"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "186c500d-563a-4bc5-b484-e68f4d1c78d0",
+              "leftValue": "={{ $json.output.best_news }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        760,
+        -60
+      ],
+      "id": "bee26274-9c42-48d8-be81-9a2f1557c601",
+      "name": "Valid Answer"
+    },
+    {
+      "parameters": {
+        "errorMessage": "Empty Answer from AI Agent"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        980,
+        140
+      ],
+      "id": "936b0861-90ac-494e-91e6-b128c9e8f557",
+      "name": "Stop and Error"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0414ba4-149c-47a6-9642-5244ed4916f5",
+              "leftValue": "={{ $json.counter }}",
+              "rightValue": 30,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "3854a94a-f7e3-49c7-b0ff-34c384b327d8",
+              "leftValue": "={{ $json.nextPage }}",
+              "rightValue": "end",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        340,
+        -800
+      ],
+      "id": "2e0380de-8395-4f8c-a8bd-0d4ef3ad4081",
+      "name": "Limit exceeded?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "python",
+        "pythonCode": "# COUNTER\ncnt = _json['counter'] if 'counter' in _json.keys() else 0\ncnt += 1\n\n\n# PAGING\nif 'nextPage' in _json.keys():\n  if _json['nextPage']:\n    next_page = _json['nextPage']\n  else:\n    next_page = 'end'\nelse:\n  next_page = ''\n\n\n# TYPE\ntype = _json['type'] if 'type' in _json.keys() else 'ai'\nif type == 'ai' and next_page == 'end':\n  type = 'robotics'\n  next_page = ''\n  \n\n# REQUESTS\nbase = 'https://newsdata.io/api/1/latest?country=us,ru,cn,jp,fr&language=en,ru&category=science,technology'\n# timeframe param is only for paid plan\n\nif type == 'ai':\n  q = 'ai AND (tool OR agent OR model OR automated OR intelligence OR generative OR multimodal OR military)'\nelse:\n  q = '(robot OR robotics OR robotic) AND (new OR humanoid OR factory OR autonomous OR vision) NOT vacuum' \n\nnp_param = f'&page={next_page}' if next_page else ''\n\n\nreturn {\n  'counter': cnt,\n  'nextPage': next_page,\n  'type': type,\n  'endpoint': f'{base}&q={q}{np_param}',\n  # 'endpoint': f'{base}&qInTitle={q}{np_param}',\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        -740
+      ],
+      "id": "81f01349-97d7-486b-8aae-0d99d3720879",
+      "name": "Endpoint Generator"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json[\"endpoint\"] }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        -680
+      ],
+      "id": "6d74a77d-99e1-4e6d-b7eb-47cd89eb6bc6",
+      "name": "Request",
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "uSNTDIB2MFwTC8zt",
+          "name": "Query Auth - newsdata.io"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT * FROM input2"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        20,
+        -740
+      ],
+      "id": "3735aa91-368b-471d-ab03-2195ce989c9d",
+      "name": "Start Iteration",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT \n  i1.counter, \n  i1.type,\n  i2.nextPage\nFROM input1 as i1, input2 as i2"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        720,
+        -720
+      ],
+      "id": "c3d15cda-e6b3-44e8-9d3f-d028c40ec577",
+      "name": "Update Variables"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9262979f-5f51-4246-b65a-da61a73134da",
+              "leftValue": "={{ $json.keys().first() }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1180,
+        -620
+      ],
+      "id": "fd26ef17-db6c-45ff-b4f9-8709451a5730",
+      "name": "News to insert?"
+    },
+    {
+      "parameters": {
+        "table": {
+          "__rl": true,
+          "value": "newsdata_io",
+          "mode": "list",
+          "cachedResultName": "newsdata_io"
+        },
+        "dataMode": "defineBelow",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "article_id",
+              "value": "={{ $json.article_id }}"
+            },
+            {
+              "column": "title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "column": "description",
+              "value": "={{ $json.description }}"
+            },
+            {
+              "column": "link",
+              "value": "={{ $json.link }}"
+            },
+            {
+              "column": "pub_dt",
+              "value": "={{ $json.pub_dt }}"
+            },
+            {
+              "column": "source_priority",
+              "value": "={{ $json.source_priority }}"
+            },
+            {
+              "column": "category",
+              "value": "={{ JSON.stringify($json.category) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1180,
+        -440
+      ],
+      "id": "d8659927-8329-4259-ad04-219ac5acca73",
+      "name": "Insert",
+      "notesInFlow": true,
+      "credentials": {
+        "mySql": {
+          "id": "yip8VsvixHpsJs0K",
+          "name": "MySQL account"
+        }
+      },
+      "notes": "TABLE: newsdata_io"
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT *\nFROM input1\nWHERE input1.article_id NOT IN (\n  SELECT input2.article_id FROM input2\n)"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        1040,
+        -620
+      ],
+      "id": "b1ffae68-c035-46cf-8b8b-1f0413b4e4db",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "return {'OK': 1}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        -400
+      ],
+      "id": "8341a5dc-0108-4024-85d8-803df8016e8b",
+      "name": "Dummy trigger"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        -760
+      ],
+      "id": "6706800d-b2c0-47ae-bff4-3f3c0470cf4a",
+      "name": "Agent trigger wire 1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1480,
+        -420
+      ],
+      "id": "8ea75fcc-010b-4dcd-99d6-881457e66b61",
+      "name": "Agent trigger wire 2"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -200,
+        -760
+      ],
+      "id": "bc4d135e-e06b-409f-bde3-8bca558e64e0",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, description FROM newsdata_io\nWHERE pub_dt >= '{{ $now.minus(48, 'hours').toUTC().format('yyyy-MM-dd HH:mm:ss') }}' \nAND posted = 0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        -20,
+        -160
+      ],
+      "id": "1a633f52-256f-4690-9a6f-9d26a5b85742",
+      "name": "Not posted in 48h",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "yip8VsvixHpsJs0K",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT article_id \nFROM newsdata_io\nWHERE pub_dt >= '{{ $now.minus(48, 'hours').toUTC().format('yyyy-MM-dd HH:mm:ss') }}'",
+        "options": {
+          "connectionLimit": 10
+        }
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        880,
+        -500
+      ],
+      "id": "ffe3b5c0-4078-4d5c-a0f5-b1493e352d6b",
+      "name": "Existing articles in 48h",
+      "notesInFlow": false,
+      "credentials": {
+        "mySql": {
+          "id": "yip8VsvixHpsJs0K",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        -120
+      ],
+      "id": "1aab3a1c-7922-415a-b74f-cb35a261fb5f",
+      "name": "Requests Bypass"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Mistral Cloud Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Wait Updating",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Valid Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Output Parser",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Results Array": {
+      "main": [
+        [
+          {
+            "node": "Filter Redundant Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Redundant Fields": {
+      "main": [
+        [
+          {
+            "node": "Dummy trigger",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Posted": {
+      "main": [
+        [
+          {
+            "node": "Wait Updating",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get Best News Data": {
+      "main": [
+        [
+          {
+            "node": "Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram": {
+      "main": [
+        []
+      ]
+    },
+    "Wait Updating": {
+      "main": [
+        [
+          {
+            "node": "Get Best News Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Answer": {
+      "main": [
+        [
+          {
+            "node": "Set Posted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop and Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit exceeded?": {
+      "main": [
+        [
+          {
+            "node": "Agent trigger wire 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Endpoint Generator": {
+      "main": [
+        [
+          {
+            "node": "Limit exceeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request": {
+      "main": [
+        [
+          {
+            "node": "Update Variables",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Results Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Iteration": {
+      "main": [
+        [
+          {
+            "node": "Endpoint Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Variables": {
+      "main": [
+        [
+          {
+            "node": "Start Iteration",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "News to insert?": {
+      "main": [
+        [
+          {
+            "node": "Insert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Insert": {
+      "main": [
+        []
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "News to insert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dummy trigger": {
+      "main": [
+        [
+          {
+            "node": "Existing articles in 48h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent trigger wire 1": {
+      "main": [
+        [
+          {
+            "node": "Agent trigger wire 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent trigger wire 2": {
+      "main": [
+        [
+          {
+            "node": "Not posted in 48h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Start Iteration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Not posted in 48h": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existing articles in 48h": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Requests Bypass": {
+      "main": [
+        [
+          {
+            "node": "Not posted in 48h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "XcYHDQ6vZR1EICxi",
+    "timezone": "Europe/Moscow",
+    "saveManualExecutions": false
+  },
+  "versionId": "b39c21fb-9764-4a21-a9a0-45cc12be8cc7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b4077f4812fd4c10dc17262c65b38e9abcbfce9d0ed9b9b5f819ae92d347c82c"
+  },
+  "id": "Ata2ACWFwg0uuHF3",
+  "tags": []
+}

@@ -1,0 +1,27 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+    volumes:
+      - ./data/n8n:/home/node/.n8n       # n8n's data
+    depends_on:
+      - mysql
+
+
+  mysql:
+    image: mysql:latest
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: NEED_TO_SET
+      MYSQL_DATABASE: n8n_news
+      MYSQL_USER: n8n_user
+      MYSQL_PASSWORD: NEED_TO_SET
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql      # MySQL's data

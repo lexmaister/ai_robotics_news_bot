@@ -1,0 +1,66 @@
+{
+  "name": "error_handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        -240
+      ],
+      "id": "728596a6-60a2-4d0d-b767-09b30a17dc54",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "900144668",
+        "text": "=🚨 Workflow error!\n\nMessage: {{$json[\"message\"] ?? $json[\"error\"][\"message\"] ?? \"Unknown error\"}}\nWorkflow: {{$json[\"workflow\"][\"name\"] ?? \"unknown\"}}\nWorkflow ID: {{$json[\"workflow\"][\"id\"] ?? \"unknown\"}}\nExecution ID: {{$json[\"execution\"][\"id\"] ?? \"unknown\"}}\nTime: {{$json[\"workflow\"][\"startedAt\"] ?? \"unknown\"}}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -240
+      ],
+      "id": "b7d04f7a-62ca-47de-864a-d14690b9f94e",
+      "name": "Post to robotics_ai_news_bot",
+      "webhookId": "f42c43ba-1a98-4054-89af-a69253ddde59",
+      "credentials": {
+        "telegramApi": {
+          "id": "K1LZIFVas5SsLCCN",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Post to robotics_ai_news_bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "XcYHDQ6vZR1EICxi"
+  },
+  "versionId": "8b810925-310e-4462-b4d4-4b99bddc95fe",
+  "meta": {
+    "instanceId": "b4077f4812fd4c10dc17262c65b38e9abcbfce9d0ed9b9b5f819ae92d347c82c"
+  },
+  "id": "XcYHDQ6vZR1EICxi",
+  "tags": []
+}
