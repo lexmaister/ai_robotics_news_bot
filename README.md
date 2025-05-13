@@ -177,17 +177,17 @@ Output should be like:
 * Open `http://localhost:5678` and log into n8n.
 * Create two blank workflows, then import JSON files (`newsdata_io.json`, `error_handler.json`) from `./workflows/`.
 * Connect Credentials:
-  * Query Auth for newsdata.io API key
-  * MySQL DB credentials (hostname: mysql)
-  * Mistral API key (for LLM)
-  * Telegram Bot API key
+  * `Query Auth` for newsdata.io API key
+  * `MySQL` DB credentials (hostname: `mysql`)
+  * `Mistral` API key (for LLM)
+  * `Telegram` Bot API key
 
-Set workflow settings as follows:
+Set workflows' settings as follows:
 * Error Workflow: link `error_handler`
 * Timezone: your local/operation timezone
 * Executions Saving: Off or minimal, for performance
 
-Test each workflow manually, then activate for full automation.
+Test `newsdata_io` workflow manually, then activate for full automation.
 
 ## License
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
