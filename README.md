@@ -150,14 +150,14 @@ Create table for newsdata.io news:
 ```sql
 CREATE TABLE newsdata_io (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    article_id VARCHAR(64) NOT NULL,
-    title VARCHAR(512) NOT NULL,
+    article_id VARCHAR(128) NOT NULL,
+    title VARCHAR(1024) NOT NULL,
     description TEXT,
     link VARCHAR(1024) NOT NULL,
     source_priority INT,
     category JSON,
     pub_dt DATETIME NOT NULL,
-    posted BOOLEAN NOT NULL DEFAULT 0
+    posted_dt DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SHOW TABLES;
@@ -189,39 +189,46 @@ Set workflows' settings as follows:
 
 Test `newsdata_io` workflow manually, then activate for full automation.
 
+
+
+
+How It Works (Step-by-Step)
+Scheduled Trigger: Every 2 hours, the workflow checks for new, unposted articles from the last 48 hours.
+News Aggregation:
+Pulls articles using newsdata.io’s API (focused on AI, robotics, global regions).
+Filters and deduplicates (no reposting).
+Editorial Selection:
+Compiles candidate articles and passes summaries to a Mistral-powered LLM agent.
+LLM agent selects the 5 most relevant and interesting articles by strict editorial guidelines (see detailed criteria).
+Posting:
+For each selected article:
+Marks as “posted” in the DB.
+Publishes nicely formatted Markdown post to @robotics_ai_news via Telegram Bot API.
+Error Handling: Robust error workflow logs or alerts for any issue (failed API, empty/dead responses, etc).
+Editorial Guidelines
+Priority: Real-world, practical applications and impacts.
+Scope: Both AI and Robotics—diversity in source, topic, and region.
+Exclusions:
+No finance, investments, funding rounds, press releases, entertainment, or celebrity features.
+No product launches or disguised PR.
+No pure research without real-world context.
+Selection:
+Up to 1 “unusual”, funny, or surprising news item per selection (rest must be impactful).
+Prefer articles with new findings, international impact, or ethical debates.
+Avoid duplicate or highly similar stories.
+
+## Maintenance & Troubleshooting
+* Extend sources: Tweak queries in the Endpoint Generator node to broaden or narrow search.
+* Credentials: Rotate API keys regularly.
+* Workflow logs: Check n8n’s logs (docker logs n8n) and manual runs for issues.
+* Database: Regularly back up n8n_news database.
+
 ## License
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
 
+## Author / Credits
+[@lexmaister](https://t.me/lexmaister)
+[@AI & Robotics Lab](https://t.me/ai_code_developer)
+[@AI & Robotics News](https://t.me/robotics_ai_news)
 
-
-
-
-
-
-
-
-
-
-<!-- ## Import and run workflows
-
-Main workflow: `newsdata_io.json`.
-Error workflow: `error_handler.json`
-
-Create blank workflows, import files, then rename your workflows and setup their settings:
-* `error_handler`:
-  * Error Workflow - `error_handler`
-  * Timezone
-* `newsdata_io`:
-  * Error Workflow - `error_handler`
-  * Timezone
-  * Executions saving
-
-Create (use existing) credentials:
-* `error_handler`
-  * error chat API code
-* `newsdata_io`:
-  * `Query Auth` for newsdata.io, use name = `apikey`
-  * `n8n_news` database (from compose file) - use host = `mysql`
-  * `Mistral API` key
-
-Test workflow `newsdata_io` manually, then activate both workflows. -->
+For a behind-the-scenes walkthrough, see messages [106](https://t.me/ai_code_developer/106), [109](https://t.me/ai_code_developer/109) and following in the [@AI & Robotics Lab](https://t.me/ai_code_developer).
