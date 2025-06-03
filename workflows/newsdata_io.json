@@ -4,10 +4,10 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=Here is the list of articles (JSON below).  \nReturn ONLY a JSON array of the IDs in editorial priority order.\n{{ $json.chatInput.toJsonString() }}",
+        "text": "=Here is the list of articles (JSON below).  \nReturn ONLY a JSON array of the IDs in editorial priority order.\n{{ $json.chatInput.toJsonString() }}. Check also this list of recently posted news to avoid duplicates and similarity in topics: {{ $json.last_posted.toJsonString() }}.",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "ROLE  \nYou are the Senior News Curator for the Telegram channel “AI & Robotics News”.  \nYour mission: from a JSON list of recent articles, pick the 1-5 items most worth posting.\n\nSELECTION GUIDELINES  \n1. Core topics  \n   • Artificial Intelligence — models, agents, applied ML, generative AI, multimodal, policy, ethics  \n   • Robotics — humanoids, industrial robots, drones, autonomous systems, soft robotics  \n\n2. Priority (score each article mentally)  \n   A. Real-world impact or deployment (↑↑)  \n   B. Technological or societal significance (↑)  \n   C. Global or cross-regional relevance (↑)  \n   D. Fresh insight, breakthrough or ethical debate (↑)  \n   E. Unusual/funny angle – max 1 per batch (optional)\n\n3. Must-have diversity  \n   • Cover at least 3 different sub-topics or perspectives if possible.  \n   • Avoid near-duplicate subjects in the same batch.\n   • Avoid selecting multiple news from the one source in the same batch.\n   • There shouldn't be more than 1 topic about markets analysis in the same batch.\n\n4. Strict exclusions  \n   ✗ Funding rounds, stock/crypto moves, celebrity pieces, new gadget ads  \n   ✗ Pure theory years from application, press releases, entertainment/gaming news  \n   ✗ Articles whose only link to AI/robotics is a buzzword\n\n5. Quality checks  \n   • Prefer in-depth reporting to 200-word blogs.  \n   • Reject items with obvious marketing language or paywall teasers.\n\nOUTPUT FORMAT (MANDATORY)  \nReturn **only** a JSON array containing the `id` values of the chosen articles, ordered by editorial priority.  \nExample: `[45, 51, 41, 44, 52]`\n\nERROR HANDLING  \nIf fewer than 5 articles meet the criteria, return the IDs you have (minimum 1).  \nIf the input list is empty, return `[]`."
+          "systemMessage": "ROLE  \nYou are the Senior News Curator for the Telegram channel “AI & Robotics News”.  \nYour mission: from a JSON list of recent articles, pick the 1-3 items most worth posting.\n\nSELECTION GUIDELINES  \n1. Core topics  \n   • Artificial Intelligence — models, agents, applied ML, generative AI, multimodal, policy, ethics  \n   • Robotics — humanoids, industrial robots, drones, autonomous systems, soft robotics  \n\n2. Priority (score each article mentally)  \n   A. Real-world impact or deployment (↑↑)  \n   B. Technological or societal significance (↑)  \n   C. Global or cross-regional relevance (↑)  \n   D. Fresh insight, breakthrough or ethical debate (↑)  \n   E. Unusual/funny angle – max 1 per batch (optional)\n\n3. Must-have diversity  \n   • All articles must cover different sub-topics or perspectives if possible.  \n   • Avoid near-duplicate subjects in the same batch.\n   • Avoid selecting multiple news from the one source in the same batch.\n   • Check list of last posted news to avoid duplicates and similar articles.\n   • There shouldn't be more than 1 topic about markets analysis in the same batch.\n\n4. Strict exclusions  \n   ✗ Funding rounds, stock/crypto moves, celebrity pieces, new gadget ads  \n   ✗ Pure theory years from application, press releases, entertainment/gaming news  \n   ✗ Articles whose only link to AI/robotics is a buzzword\n\n5. Quality checks  \n   • Prefer in-depth reporting to 200-word blogs.  \n   • Reject items with obvious marketing language or paywall teasers.\n\nOUTPUT FORMAT (MANDATORY)  \nReturn **only** a JSON array containing the `id` values of the chosen articles, ordered by editorial priority.  \nExample: `[45, 51, 41]`\n\nERROR HANDLING  \nIf fewer than 5 articles meet the criteria, return the IDs you have (minimum 1).  \nIf the input list is empty, return `[]`."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "jsonSchemaExample": "{\n\t\"best_news\": [45, 48, 52, 51, 42]\n}"
+        "jsonSchemaExample": "{\n\t\"best_news\": [45, 48, 52]\n}"
       },
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -143,11 +143,11 @@
       "parameters": {
         "content": "## Collect news from newsdata.io and save to database",
         "height": 600,
-        "width": 1640
+        "width": 1920
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        0,
+        -280,
         0
       ],
       "typeVersion": 1,
@@ -158,12 +158,12 @@
       "parameters": {
         "content": "## Find the best news from today that have not been posted yet",
         "height": 620,
-        "width": 1300,
+        "width": 1580,
         "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        0,
+        -280,
         640
       ],
       "typeVersion": 1,
@@ -450,8 +450,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        -180,
-        40
+        -200,
+        80
       ],
       "id": "a9261f1f-abec-464a-926f-832076ad8c7a",
       "name": "Schedule Trigger"
@@ -467,8 +467,8 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -560,
-        460
+        -540,
+        220
       ],
       "id": "6a07dad4-ee14-4bcb-a55d-a95d99ea5628",
       "name": "check posted by title",
@@ -491,8 +491,8 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -560,
-        300
+        -540,
+        60
       ],
       "id": "be83b16e-0c0b-42bc-aa70-15cdce672e9d",
       "name": "check duplicates",
@@ -507,13 +507,13 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, title, description FROM newsdata_io\nWHERE pub_dt >= '{{ $now.minus(48, 'hours').toUTC().format('yyyy-MM-dd HH:mm:ss') }}' \nAND description IS NOT NULL\nAND posted_dt IS NULL\nORDER BY pub_dt DESC\nLIMIT 20",
+        "query": "SELECT id, title, description FROM newsdata_io\nWHERE pub_dt >= '{{ $now.minus(48, 'hours').toUTC().format('yyyy-MM-dd HH:mm:ss') }}' \nAND description IS NOT NULL\nAND posted_dt IS NULL\nORDER BY pub_dt DESC\nLIMIT 36",
         "options": {}
       },
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        20,
+        -240,
         700
       ],
       "id": "f47a40bd-732b-4df2-84e0-d5d1aeef302c",
@@ -555,8 +555,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        20,
-        960
+        -240,
+        900
       ],
       "id": "53b466dc-7a88-4feb-b4e7-e2dc940baf2b",
       "name": "News to Analyse?"
@@ -568,8 +568,8 @@
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        200,
-        1060
+        -60,
+        940
       ],
       "id": "e0b7f7be-7dcf-4a5f-8440-096ce7fd6070",
       "name": "Nothing to Analyse"
@@ -685,21 +685,6 @@
     },
     {
       "parameters": {
-        "aggregate": "aggregateAllItemData",
-        "destinationFieldName": "chatInput",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.aggregate",
-      "typeVersion": 1,
-      "position": [
-        200,
-        880
-      ],
-      "id": "d728097f-ebd3-45a5-97b9-3a94a13972d8",
-      "name": "News List"
-    },
-    {
-      "parameters": {
         "operation": "executeQuery",
         "query": "SELECT title, DATE_ADD(posted_dt, INTERVAL 3 HOUR) as posted\nFROM newsdata_io\nWHERE posted_dt IS NOT NULL\nORDER BY posted DESC",
         "options": {
@@ -709,8 +694,8 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -560,
-        620
+        -540,
+        380
       ],
       "id": "bc3ee4a9-ff12-42d0-be87-dc50d5805923",
       "name": "posted list by dt",
@@ -845,8 +830,8 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -560,
-        780
+        -540,
+        540
       ],
       "id": "b85fd211-78f7-4a74-835b-cbb4ce6edf9c",
       "name": "posted vs not posted for 48h",
@@ -862,13 +847,13 @@
       "parameters": {
         "content": "## DB queries",
         "height": 900,
-        "width": 360,
+        "width": 280,
         "color": 4
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -680,
-        240
+        -620,
+        0
       ],
       "typeVersion": 1,
       "id": "e4e8c54c-d0f3-482f-8870-3b200a713daa",
@@ -885,8 +870,8 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -560,
-        960
+        -540,
+        720
       ],
       "id": "2a6694af-29cb-45b5-ac3e-7fda5461c550",
       "name": "not posted in 48h - details",
@@ -897,6 +882,81 @@
           "name": "MySQL n8n_news"
         }
       }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "chatInput",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        20,
+        780
+      ],
+      "id": "d728097f-ebd3-45a5-97b9-3a94a13972d8",
+      "name": "News List to Analyse"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT title\n  FROM newsdata_io\n  WHERE posted_dt IS NOT NULL\n  AND pub_dt >= '{{ $now.minus(48, 'hours').toUTC().format('yyyy-MM-dd HH:mm:ss') }}'\n  ORDER BY posted_dt DESC\n  LIMIT 36\n",
+        "options": {
+          "connectionLimit": 10
+        }
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        -260,
+        1100
+      ],
+      "id": "c99958d5-e71e-41e6-92f8-9197c1f6e1ce",
+      "name": "Last 36 Posted Articles",
+      "notesInFlow": false,
+      "credentials": {
+        "mySql": {
+          "id": "rVoJgER2O3fzYLL5",
+          "name": "MySQL n8n_news"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT * FROM input1, input2"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        220,
+        800
+      ],
+      "id": "f130befd-a3e6-44a5-a7b5-79d8923e1b51",
+      "name": "Model Input"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "title",
+              "renameField": true,
+              "outputFieldName": "last_posted"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        20,
+        1100
+      ],
+      "id": "5d075670-37c6-40ef-9e08-0ac6709bbcba",
+      "name": "Last Posted News List"
     }
   ],
   "pinData": {},
@@ -1113,7 +1173,7 @@
       "main": [
         [
           {
-            "node": "News List",
+            "node": "News List to Analyse",
             "type": "main",
             "index": 0
           }
@@ -1189,15 +1249,9 @@
             "node": "Not Posted in 48h",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "News List": {
-      "main": [
-        [
+          },
           {
-            "node": "AI Agent",
+            "node": "Last 36 Posted Articles",
             "type": "main",
             "index": 0
           }
@@ -1270,6 +1324,50 @@
           }
         ]
       ]
+    },
+    "News List to Analyse": {
+      "main": [
+        [
+          {
+            "node": "Model Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last 36 Posted Articles": {
+      "main": [
+        [
+          {
+            "node": "Last Posted News List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Model Input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last Posted News List": {
+      "main": [
+        [
+          {
+            "node": "Model Input",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -1280,7 +1378,7 @@
     "callerPolicy": "workflowsFromSameOwner",
     "errorWorkflow": "Pcaazavszuwin9th"
   },
-  "versionId": "09705f2c-703f-4e21-9fe0-29f810a62c85",
+  "versionId": "2c65b80f-c769-47b3-862c-883beeaecbdb",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "150696a109ca94a218f8bbcab6b68f827420b7032f3b464b5842c39cdfa63498"
