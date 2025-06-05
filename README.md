@@ -150,14 +150,16 @@ Create table for newsdata.io news:
 ```sql
 CREATE TABLE newsdata_io (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    article_id VARCHAR(128) NOT NULL,
-    title VARCHAR(1024) NOT NULL,
-    description TEXT,
+    article_id VARCHAR(64) NOT NULL,
+    title VARCHAR(704) NOT NULL,
+    description TEXT NOT NULL,
     link VARCHAR(1024) NOT NULL,
     source_priority INT,
     category JSON,
     pub_dt DATETIME NOT NULL,
-    posted_dt DATETIME
+    collected_dt DATETIME NOT NULL,
+    posted_dt DATETIME,
+    CONSTRAINT UC_newsdata UNIQUE (article_id,title)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SHOW TABLES;
