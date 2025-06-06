@@ -1,5 +1,5 @@
 {
-  "name": "newsdata_io",
+  "name": "Newsdata.io",
   "nodes": [
     {
       "parameters": {
@@ -7,16 +7,16 @@
         "text": "=Here is the list of articles (JSON below).  \nReturn ONLY a JSON array of the IDs in editorial priority order.\n{{ $json.chatInput.toJsonString() }}. Check also this list of recently posted news to avoid duplicates and similarity in topics: {{ $json.last_posted.toJsonString() }}.",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "ROLE  \nYou are the Senior News Curator for the Telegram channel “AI & Robotics News”.  \nYour mission: from a JSON list of recent articles, pick the 1-3 items most worth posting.\n\nSELECTION GUIDELINES  \n1. Core topics  \n   • Artificial Intelligence — models, agents, applied ML, generative AI, multimodal, policy, ethics  \n   • Robotics — humanoids, industrial robots, drones, autonomous systems, soft robotics  \n\n2. Priority (score each article mentally)  \n   A. Real-world impact or deployment (↑↑)  \n   B. Technological or societal significance (↑)  \n   C. Global or cross-regional relevance (↑)  \n   D. Fresh insight, breakthrough or ethical debate (↑)  \n   E. Unusual/funny angle – max 1 per batch (optional)\n\n3. Must-have diversity  \n   • All articles must cover different sub-topics or perspectives if possible.  \n   • Avoid near-duplicate subjects in the same batch.\n   • Avoid selecting multiple news from the one source in the same batch.\n   • Check list of last posted news to avoid duplicates and similar articles.\n   • There shouldn't be more than 1 topic about markets analysis in the same batch.\n\n4. Strict exclusions  \n   ✗ Funding rounds, stock/crypto moves, celebrity pieces, new gadget ads  \n   ✗ Pure theory years from application, press releases, entertainment/gaming news  \n   ✗ Articles whose only link to AI/robotics is a buzzword\n\n5. Quality checks  \n   • Prefer in-depth reporting to 200-word blogs.  \n   • Reject items with obvious marketing language or paywall teasers.\n\nOUTPUT FORMAT (MANDATORY)  \nReturn **only** a JSON array containing the `id` values of the chosen articles, ordered by editorial priority.  \nExample: `[45, 51, 41]`\n\nERROR HANDLING  \nIf fewer than 5 articles meet the criteria, return the IDs you have (minimum 1).  \nIf the input list is empty, return `[]`."
+          "systemMessage": "ROLE  \nYou are the Senior News Curator for the Telegram channel “AI & Robotics News”.  \nYour mission: from a JSON list of recent articles, pick the 1-3 items most worth posting.\n\nSELECTION GUIDELINES  \n1. Core topics:  \n   • Artificial Intelligence — models, agents, applied ML, generative AI, multimodal, policy, ethics, military  \n   • Robotics — humanoids, industrial robots, drones, autonomous systems, soft robotics, unusual robots  \n\n2. Priority (score each article mentally):  \n   A. Real-world impact or deployment (↑↑)  \n   B. Technological or societal significance (↑)  \n   C. Global or cross-regional relevance (↑)  \n   D. Fresh insight, breakthrough or ethical debate (↑)  \n   E. Unusual/funny angle – max 1 per batch (optional)\n\n3. Must-have diversity:  \n   • All articles must cover different sub-topics or perspectives if possible.  \n   • Avoid near-duplicate subjects in the same batch, also consider previously posted news.\n   • Avoid selecting multiple news from the one source in the same batch.\n   • Check list of last posted news to avoid duplicates and similar articles.\n   • There shouldn't be more than 1 topic about markets analysis in the same batch and a lot of them per one day.\n\n4. Strict exclusions:  \n   ✗ Funding rounds, stock/crypto moves, celebrity pieces, new gadget ads.  \n   ✗ Pure theory years from application, press releases, entertainment/gaming news.  \n   ✗ Articles whose only link to AI/robotics is a buzzword.\n   ✗ Articles that have been covered previously.\n\n5. Quality checks:  \n   • Prefer in-depth reporting to 200-word blogs.  \n   • Reject items with obvious marketing language or paywall teasers.\n\nOUTPUT FORMAT (MANDATORY)  \nReturn **only** a JSON array containing the `id` values of the chosen articles, ordered by editorial priority.  \nExample: `[45, 51, 41]`\n\nERROR HANDLING  \nIf fewer than 3 articles meet the criteria, return the IDs you have (minimum 1).  \nIf the input list is empty, return `[]`."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.9,
       "position": [
-        360,
-        800
+        980,
+        680
       ],
-      "id": "06c7f1b4-dcf5-4852-9d46-e0cafb2bfbfd",
+      "id": "f339fde9-14b9-43b3-a9cb-3f503de2289e",
       "name": "AI Agent",
       "alwaysOutputData": true
     },
@@ -28,14 +28,14 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
       "typeVersion": 1,
       "position": [
-        380,
-        1120
+        1000,
+        1040
       ],
-      "id": "ec9de26d-e08f-4107-a4df-4f8596aa923a",
+      "id": "d9e20084-25b9-472a-abd2-b7133641260f",
       "name": "Mistral Cloud Chat Model",
       "credentials": {
         "mistralCloudApi": {
-          "id": "7B9fBYSzKWERQsBd",
+          "id": "6zuPFDwLkd3HXSOS",
           "name": "Mistral Cloud account"
         }
       }
@@ -47,10 +47,10 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
       "position": [
-        560,
-        1120
+        1180,
+        1040
       ],
-      "id": "a2be5721-dbba-4b63-98e5-0df68229775e",
+      "id": "4a89f4e4-a8fa-474b-ae72-3ad33a5bcef5",
       "name": "Structured Output Parser"
     },
     {
@@ -60,10 +60,10 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
       "typeVersion": 1,
       "position": [
-        460,
-        980
+        1080,
+        880
       ],
-      "id": "53ce7996-bdf7-4402-b15a-79fb4d8e74a2",
+      "id": "f250c2f4-1ac1-41be-b2fd-8f0e017dbc57",
       "name": "Auto-fixing Output Parser"
     },
     {
@@ -74,10 +74,10 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        400,
-        400
+        1120,
+        100
       ],
-      "id": "49fc2b08-08e9-4678-8256-36824bd6df8f",
+      "id": "89ee4e84-7d95-49b0-b32e-44e915859b5b",
       "name": "Results Array"
     },
     {
@@ -133,60 +133,60 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        560,
-        400
+        1300,
+        100
       ],
-      "id": "bcc1442d-f673-4978-95ef-34d753c3bd00",
+      "id": "12888b68-558c-4737-b6ca-1fecd5c0ccb8",
       "name": "Filter Redundant Fields"
     },
     {
       "parameters": {
         "content": "## Collect news from newsdata.io and save to database",
-        "height": 600,
-        "width": 1920
+        "height": 480,
+        "width": 1940
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -280,
-        0
+        320,
+        40
       ],
       "typeVersion": 1,
-      "id": "32ff4906-48c8-4606-bce7-08155b3118f9",
+      "id": "998e5657-b5af-489e-8c69-4381856c84b7",
       "name": "Sticky Note"
     },
     {
       "parameters": {
         "content": "## Find the best news from today that have not been posted yet",
-        "height": 620,
-        "width": 1580,
+        "height": 660,
+        "width": 1600,
         "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -280,
-        640
+        320,
+        540
       ],
       "typeVersion": 1,
-      "id": "82ee7f11-1c81-4b84-a3c6-98dcca61ea2e",
+      "id": "6296c16a-aaf0-4b08-b03e-d790a8c794b1",
       "name": "Sticky Note2"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE newsdata_io\nSET posted_dt = '{{ $now.toUTC().format('yyyy-MM-dd HH:mm:ss') }}'\nWHERE id in ({{ $json.best_news }})",
+        "query": "UPDATE newsdata_io\nSET posted_dt = '{{ $now.format('yyyy-MM-dd HH:mm:ss') }}'\nWHERE id in ({{ $json.best_news }})",
         "options": {}
       },
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        1160,
-        920
+        1780,
+        800
       ],
-      "id": "3979b646-e75d-43e3-a3ae-cfa12b39753b",
+      "id": "80fd347c-2cf7-4372-8967-4809a23c98f1",
       "name": "Set Posted",
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -200,14 +200,14 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        1500,
-        700
+        2040,
+        800
       ],
-      "id": "faffc360-7f75-4c15-8946-6aa920d03033",
+      "id": "d31c0b43-4627-4ff7-b38f-301d25cd6c1f",
       "name": "Get Best News Data",
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -225,15 +225,15 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        1440,
-        940
+        2040,
+        1000
       ],
-      "id": "93698a06-ddf8-4a7a-bf4e-2c8e7a8a9f7b",
+      "id": "aa7a9c77-99c4-47fe-9581-7c6e9084f75a",
       "name": "Telegram",
       "webhookId": "2971bcc2-d1a8-4049-9dd0-54a7b86fe295",
       "credentials": {
         "telegramApi": {
-          "id": "zbQZdbrwE7AcC9UW",
+          "id": "wc8DQPLdyGvUY7F6",
           "name": "robotics_ai_news_bot"
         }
       }
@@ -241,17 +241,17 @@
     {
       "parameters": {
         "content": "## Post to [AI & Robotic News](https://t.me/robotics_ai_news)",
-        "height": 620,
+        "height": 660,
         "width": 320,
         "color": 3
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        1320,
-        640
+        1940,
+        540
       ],
       "typeVersion": 1,
-      "id": "8383b8b6-0958-4308-972f-783c03c9c060",
+      "id": "7177161a-fc7a-4459-a053-8365b57aedeb",
       "name": "Sticky Note3"
     },
     {
@@ -261,54 +261,11 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.1,
       "position": [
-        1360,
-        700
+        2040,
+        600
       ],
-      "id": "1274559f-2242-498b-b965-e157c88378fa",
+      "id": "45186434-9633-44d0-a549-a5f50f9f174e",
       "name": "Wait Updating"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "a0414ba4-149c-47a6-9642-5244ed4916f5",
-              "leftValue": "={{ $json.counter }}",
-              "rightValue": 16,
-              "operator": {
-                "type": "number",
-                "operation": "gt"
-              }
-            },
-            {
-              "id": "3854a94a-f7e3-49c7-b0ff-34c384b327d8",
-              "leftValue": "={{ $json.nextPage }}",
-              "rightValue": "end",
-              "operator": {
-                "type": "string",
-                "operation": "equals",
-                "name": "filter.operator.equals"
-              }
-            }
-          ],
-          "combinator": "or"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        380,
-        60
-      ],
-      "id": "dfc6b6f0-4ff5-4e39-a30c-51a43ca40193",
-      "name": "Limit exceeded?"
     },
     {
       "parameters": {
@@ -319,10 +276,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        220,
-        120
+        580,
+        300
       ],
-      "id": "67dc1583-e0d4-42cf-9654-87a0130425aa",
+      "id": "99465501-9fed-46a3-a562-664036704876",
       "name": "Endpoint Generator"
     },
     {
@@ -335,14 +292,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        560,
-        180
+        940,
+        100
       ],
-      "id": "0584cad3-ce72-49a3-a4a3-f7ba05ddd327",
+      "id": "9615544d-91a1-48cf-af65-4786e72329ee",
       "name": "Request",
       "credentials": {
         "httpQueryAuth": {
-          "id": "3LLDA7Wil8oVfqAv",
+          "id": "m1qXEvbzTYgjBI0T",
           "name": "Query Auth account"
         }
       }
@@ -355,25 +312,25 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.1,
       "position": [
-        60,
-        120
+        420,
+        300
       ],
-      "id": "6628de6d-a89d-4125-92b0-1b15e7e39ac6",
+      "id": "7d1b3c0f-02c4-457e-910f-009297a3392c",
       "name": "Start Iteration",
       "alwaysOutputData": true
     },
     {
       "parameters": {
         "mode": "combineBySql",
-        "query": "SELECT \n  i1.counter, \n  i1.type,\n  i2.nextPage\nFROM input1 as i1, input2 as i2"
+        "query": "SELECT \n  i2.counter, \n  i2.type,\n  i1.nextPage\nFROM input1 as i1, input2 as i2"
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.1,
       "position": [
-        760,
-        140
+        1120,
+        280
       ],
-      "id": "8344067c-8247-41ba-9bf0-ce56bb6bd8dd",
+      "id": "cd080373-4409-455b-b9a7-42f31043cae5",
       "name": "Update Variables"
     },
     {
@@ -414,6 +371,10 @@
             {
               "column": "category",
               "value": "={{ JSON.stringify($json.category) }}"
+            },
+            {
+              "column": "collected_dt",
+              "value": "={{ $now.format('yyyy-MM-dd HH:mm:ss') }}"
             }
           ]
         },
@@ -422,15 +383,15 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        1220,
-        440
+        2020,
+        340
       ],
-      "id": "eca91c8d-69c1-488e-9922-358878ea316c",
+      "id": "9c4dbdc2-db5e-482c-8ce9-33e6d2584dc9",
       "name": "Insert",
       "notesInFlow": true,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       },
@@ -450,10 +411,10 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        -200,
-        80
+        420,
+        100
       ],
-      "id": "a9261f1f-abec-464a-926f-832076ad8c7a",
+      "id": "8ab1c510-cd7c-4c40-9c6b-d160d0a24219",
       "name": "Schedule Trigger"
     },
     {
@@ -467,15 +428,15 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -540,
-        220
+        -220,
+        260
       ],
-      "id": "6a07dad4-ee14-4bcb-a55d-a95d99ea5628",
+      "id": "7885aff2-a6dd-4941-8112-37cb9041f7bc",
       "name": "check posted by title",
       "notesInFlow": false,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -491,15 +452,15 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -540,
-        60
+        -220,
+        100
       ],
-      "id": "be83b16e-0c0b-42bc-aa70-15cdce672e9d",
+      "id": "5beb1b12-0e0d-4ecd-bbf1-1fe3bf3e2fe9",
       "name": "check duplicates",
       "notesInFlow": false,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -507,21 +468,21 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, title, description FROM newsdata_io\nWHERE pub_dt >= '{{ $now.minus(48, 'hours').toUTC().format('yyyy-MM-dd HH:mm:ss') }}' \nAND description IS NOT NULL\nAND posted_dt IS NULL\nORDER BY pub_dt DESC\nLIMIT 36",
+        "query": "SELECT id, title, description FROM newsdata_io\nWHERE pub_dt >= '{{ $now.minus(48, 'hours').format('yyyy-MM-dd HH:mm:ss') }}' \nAND description IS NOT NULL\nAND posted_dt IS NULL\nORDER BY pub_dt DESC\nLIMIT 36",
         "options": {}
       },
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -240,
-        700
+        380,
+        600
       ],
-      "id": "f47a40bd-732b-4df2-84e0-d5d1aeef302c",
+      "id": "982de28b-4173-47d5-8d30-675525003925",
       "name": "Not Posted in 48h",
       "alwaysOutputData": true,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -555,10 +516,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -240,
-        900
+        380,
+        820
       ],
-      "id": "53b466dc-7a88-4feb-b4e7-e2dc940baf2b",
+      "id": "9f7caf40-f52f-4d1e-8940-622c001548cb",
       "name": "News to Analyse?"
     },
     {
@@ -568,25 +529,11 @@
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        -60,
-        940
+        560,
+        820
       ],
-      "id": "e0b7f7be-7dcf-4a5f-8440-096ce7fd6070",
+      "id": "fa217128-642e-4bae-8d1c-7863c464dcc9",
       "name": "Nothing to Analyse"
-    },
-    {
-      "parameters": {
-        "language": "python",
-        "pythonCode": "return {'OK': 1}"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        740,
-        460
-      ],
-      "id": "f7494f01-1486-464c-9973-c5cf60117d1a",
-      "name": "Dummy Trigger"
     },
     {
       "parameters": {
@@ -599,89 +546,19 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        900,
-        400
+        1660,
+        200
       ],
-      "id": "9e45f591-493f-48c7-9455-150360136943",
+      "id": "b6765b96-2806-48b6-9e5c-f00c94894cf5",
       "name": "Existing Articles in 48h",
       "notesInFlow": false,
       "alwaysOutputData": true,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
-    },
-    {
-      "parameters": {
-        "mode": "combineBySql",
-        "query": "SELECT *\nFROM input1\nWHERE input1.article_id NOT IN (\n  SELECT input2.article_id FROM input2\n)\nAND input1.title NOT IN (\n  SELECT input2.title FROM input2\n)"
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.1,
-      "position": [
-        1060,
-        260
-      ],
-      "id": "4c6f9c62-d9f5-4fb0-98a3-56d930b8f8ae",
-      "name": "Get New Articles"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "9262979f-5f51-4246-b65a-da61a73134da",
-              "leftValue": "={{ $json.keys().first() }}",
-              "rightValue": "success",
-              "operator": {
-                "type": "string",
-                "operation": "notEquals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        1220,
-        260
-      ],
-      "id": "0b7713a5-f890-4315-a9ae-e72c3535aa29",
-      "name": "Articles to Insert?"
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        1500,
-        100
-      ],
-      "id": "99e7ba25-ae91-4a4f-a910-97fd1ccd12d7",
-      "name": "Agent Trigger Wire 1"
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        1500,
-        440
-      ],
-      "id": "0d807786-5f47-4a6d-a71f-9408bf1fd2a7",
-      "name": "Agent Trigger Wire 2"
     },
     {
       "parameters": {
@@ -694,15 +571,15 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -540,
-        380
+        -220,
+        420
       ],
-      "id": "bc3ee4a9-ff12-42d0-be87-dc50d5805923",
+      "id": "53ba0f5b-e390-41c6-99c3-cd87570c2ab7",
       "name": "posted list by dt",
       "notesInFlow": false,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -715,10 +592,10 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.1,
       "position": [
-        980,
-        700
+        1600,
+        600
       ],
-      "id": "4836802d-3648-4e74-9ef4-a375009ed78c",
+      "id": "d2e94ad2-b951-4acf-89e2-1d4e6ca40127",
       "name": "Filter posted news"
     },
     {
@@ -749,10 +626,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1000,
-        1000
+        1620,
+        880
       ],
-      "id": "0d9ebc84-fed9-4e02-a6ef-d583dfca4dc9",
+      "id": "03688587-6d16-4c86-bb8d-698961842538",
       "name": "News to Post?"
     },
     {
@@ -762,10 +639,10 @@
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        1160,
-        1100
+        1780,
+        1000
       ],
-      "id": "8ca60c86-9467-400c-8210-454b70fb9aa9",
+      "id": "cd889b66-1ad4-4bc1-906a-68dd5c823a6e",
       "name": "Nothing to Post"
     },
     {
@@ -782,10 +659,10 @@
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
       "position": [
-        1140,
-        700
+        1760,
+        600
       ],
-      "id": "d5c039c3-ca66-4c13-9579-afb485492690",
+      "id": "a088bd08-162b-4cb0-ba3f-5f75e8fd686c",
       "name": "News List to Post"
     },
     {
@@ -796,10 +673,10 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        800,
-        800
+        1420,
+        680
       ],
-      "id": "e20187ba-2463-4f1a-be28-48760c11c790",
+      "id": "6976b15c-702d-42a1-bde5-29cc726e2ef1",
       "name": "News ID Table"
     },
     {
@@ -813,10 +690,10 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        660,
-        800
+        1280,
+        680
       ],
-      "id": "c1016044-96a2-4643-a517-3277366237bb",
+      "id": "ad58104e-2706-475f-a3a9-57a8c4e6ae89",
       "name": "News ID Array"
     },
     {
@@ -830,15 +707,15 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -540,
-        540
+        -220,
+        580
       ],
-      "id": "b85fd211-78f7-4a74-835b-cbb4ce6edf9c",
+      "id": "d97df151-69ec-4aa9-a6a8-b4036cb504d3",
       "name": "posted vs not posted for 48h",
       "notesInFlow": false,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -852,11 +729,11 @@
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -620,
-        0
+        -300,
+        40
       ],
       "typeVersion": 1,
-      "id": "e4e8c54c-d0f3-482f-8870-3b200a713daa",
+      "id": "185a7ad2-8be5-43ff-b9a3-e268864063b9",
       "name": "Sticky Note1"
     },
     {
@@ -870,15 +747,15 @@
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 2.4,
       "position": [
-        -540,
-        720
+        -220,
+        760
       ],
-      "id": "2a6694af-29cb-45b5-ac3e-7fda5461c550",
+      "id": "fab12343-18e7-443b-bae7-a3d307a01ccc",
       "name": "not posted in 48h - details",
       "notesInFlow": false,
       "credentials": {
         "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
+          "id": "SlwUL8t7rvWe6ZMd",
           "name": "MySQL n8n_news"
         }
       }
@@ -892,35 +769,11 @@
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
       "position": [
-        20,
-        780
+        640,
+        680
       ],
-      "id": "d728097f-ebd3-45a5-97b9-3a94a13972d8",
+      "id": "865b934c-e568-4720-b529-8cc7ce4a56d5",
       "name": "News List to Analyse"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT title\n  FROM newsdata_io\n  WHERE posted_dt IS NOT NULL\n  AND pub_dt >= '{{ $now.minus(48, 'hours').toUTC().format('yyyy-MM-dd HH:mm:ss') }}'\n  ORDER BY posted_dt DESC\n  LIMIT 36\n",
-        "options": {
-          "connectionLimit": 10
-        }
-      },
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 2.4,
-      "position": [
-        -260,
-        1100
-      ],
-      "id": "c99958d5-e71e-41e6-92f8-9197c1f6e1ce",
-      "name": "Last 36 Posted Articles",
-      "notesInFlow": false,
-      "credentials": {
-        "mySql": {
-          "id": "rVoJgER2O3fzYLL5",
-          "name": "MySQL n8n_news"
-        }
-      }
     },
     {
       "parameters": {
@@ -930,33 +783,171 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3.1,
       "position": [
-        220,
-        800
+        840,
+        680
       ],
-      "id": "f130befd-a3e6-44a5-a7b5-79d8923e1b51",
+      "id": "c5650171-186c-4506-9b69-af6c5044ea0b",
       "name": "Model Input"
     },
     {
       "parameters": {
-        "fieldsToAggregate": {
-          "fieldToAggregate": [
-            {
-              "fieldToAggregate": "title",
-              "renameField": true,
-              "outputFieldName": "last_posted"
-            }
-          ]
-        },
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "last_posted",
         "options": {}
       },
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
       "position": [
-        0,
-        1100
+        560,
+        1040
       ],
-      "id": "5d075670-37c6-40ef-9e08-0ac6709bbcba",
+      "id": "258f207b-f761-4261-926f-65d161fdb4c2",
       "name": "Last Posted News List"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a0414ba4-149c-47a6-9642-5244ed4916f5",
+              "leftValue": "={{ $json.counter }}",
+              "rightValue": 16,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            },
+            {
+              "id": "3854a94a-f7e3-49c7-b0ff-34c384b327d8",
+              "leftValue": "={{ $json.nextPage }}",
+              "rightValue": "end",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        760,
+        300
+      ],
+      "id": "e33f80b0-3233-4723-8929-0b4f1bad1ba1",
+      "name": "Continue Requests?"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "return {'OK': 1}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        200
+      ],
+      "id": "b20c150c-1e34-4de4-a0e2-a6711cf8f9ea",
+      "name": "Trigger"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.keys().first() }}",
+                    "rightValue": "success",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "id": "bb184f14-4f4f-44b7-8aaf-082fbfd53806"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2020,
+        120
+      ],
+      "id": "848e6cbf-529c-4780-9470-fcf9780a8783",
+      "name": "Insert Trigger"
+    },
+    {
+      "parameters": {
+        "mode": "combineBySql",
+        "query": "SELECT *\nFROM input1 as i1 \nWHERE i1.article_id NOT IN (\n  SELECT input2.article_id FROM input2\n)\nAND i1.title NOT IN (\n  SELECT input2.title FROM input2\n)\nAND i1.description IS NOT NULL"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        1840,
+        120
+      ],
+      "id": "c6d5ccd4-3644-42eb-82c2-69f946140262",
+      "name": "Filter Existing News"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        100,
+        820
+      ],
+      "id": "f1ca2224-babb-4469-a975-92a752a139a9",
+      "name": "Agent Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT title, description\n  FROM newsdata_io\n  WHERE posted_dt IS NOT NULL\n  AND pub_dt >= '{{ $now.minus(24, 'hours').format('yyyy-MM-dd HH:mm:ss') }}'\n  ORDER BY posted_dt DESC",
+        "options": {
+          "connectionLimit": 10
+        }
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        380,
+        1040
+      ],
+      "id": "2ea2021e-bf33-47e4-98b3-9865b0a2d496",
+      "name": "Last Posted in 24h",
+      "notesInFlow": false,
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "SlwUL8t7rvWe6ZMd",
+          "name": "MySQL n8n_news"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1025,12 +1016,12 @@
       "main": [
         [
           {
-            "node": "Dummy Trigger",
+            "node": "Trigger",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Get New Articles",
+            "node": "Filter Existing News",
             "type": "main",
             "index": 0
           }
@@ -1070,34 +1061,11 @@
         ]
       ]
     },
-    "Limit exceeded?": {
-      "main": [
-        [
-          {
-            "node": "Agent Trigger Wire 1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Update Variables",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Endpoint Generator": {
       "main": [
         [
           {
-            "node": "Limit exceeded?",
+            "node": "Continue Requests?",
             "type": "main",
             "index": 0
           }
@@ -1115,7 +1083,7 @@
           {
             "node": "Update Variables",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ]
       ]
@@ -1187,73 +1155,13 @@
         ]
       ]
     },
-    "Dummy Trigger": {
-      "main": [
-        [
-          {
-            "node": "Existing Articles in 48h",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Existing Articles in 48h": {
       "main": [
         [
           {
-            "node": "Get New Articles",
+            "node": "Filter Existing News",
             "type": "main",
             "index": 1
-          }
-        ]
-      ]
-    },
-    "Get New Articles": {
-      "main": [
-        [
-          {
-            "node": "Articles to Insert?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Articles to Insert?": {
-      "main": [
-        [
-          {
-            "node": "Insert",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Agent Trigger Wire 1": {
-      "main": [
-        [
-          {
-            "node": "Agent Trigger Wire 2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Agent Trigger Wire 2": {
-      "main": [
-        [
-          {
-            "node": "Not Posted in 48h",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Last 36 Posted Articles",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -1336,17 +1244,6 @@
         ]
       ]
     },
-    "Last 36 Posted Articles": {
-      "main": [
-        [
-          {
-            "node": "Last Posted News List",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Model Input": {
       "main": [
         [
@@ -1368,21 +1265,103 @@
           }
         ]
       ]
+    },
+    "Continue Requests?": {
+      "main": [
+        [
+          {
+            "node": "Update Variables",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Existing Articles in 48h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Trigger": {
+      "main": [
+        [
+          {
+            "node": "Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Existing News": {
+      "main": [
+        [
+          {
+            "node": "Insert Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Trigger": {
+      "main": [
+        [
+          {
+            "node": "Last Posted in 24h",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Not Posted in 48h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Last Posted in 24h": {
+      "main": [
+        [
+          {
+            "node": "Last Posted News List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1",
-    "timezone": "Europe/Moscow",
-    "saveManualExecutions": false,
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": "Pcaazavszuwin9th"
+    "errorWorkflow": "3KrC76L2tkEns519",
+    "timezone": "Etc/UTC"
   },
-  "versionId": "7a1969ac-4554-4c7e-8a9f-f7db75c1af74",
+  "versionId": "fc4ff83a-649b-4571-bb39-651d442dd00e",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "150696a109ca94a218f8bbcab6b68f827420b7032f3b464b5842c39cdfa63498"
+    "instanceId": "00113ea425e724c18a3fc809567de94b8a61e09467a8efec875b51558c9ac8e3"
   },
-  "id": "NFtNMJsRbEApu9Am",
+  "id": "NIFCyvV0wHZ1dT0x",
   "tags": []
 }

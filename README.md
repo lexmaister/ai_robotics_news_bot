@@ -1,10 +1,10 @@
 # AI & Robotics Lab News Feed Bot
 
-A **self-hosted, fully automated Telegram bot** that curates and delivers the most interesting, unusual, and high-quality news on Artificial Intelligence (AI) and Robotics directly to the [AI and Robotics Lab Telegram Channel](https://t.me/robotics_ai_news). Built for advanced tech enthusiasts and professionals, the bot collects news from leading sources, applies strict editorial rules, and posts concise updates every few hours—all with zero code required, thanks to n8n automation.
+A **self-hosted, fully automated Telegram bot** that curates and delivers the most interesting, unusual, and high-quality news on Artificial Intelligence (AI) and Robotics directly to the [AI and Robotics News](https://t.me/robotics_ai_news) Telegram Channel. Built for advanced tech enthusiasts and professionals, the bot collects news from leading sources, applies strict editorial rules, and posts concise updates every few hours — all with zero code required, thanks to n8n automation.
 
 ## Features
 - **Multi-source Aggregation**: Gathers news from multiple sources globally via [newsdata.io](https://newsdata.io/).
-- **AI-Powered Editorial Selection**: Uses a Large Language Model (LLM, Mistral) to select the 5 most relevant and unique articles on AI and robotics every 2 hours.
+- **AI-Powered Editorial Selection**: Uses a Large Language Model (LLM) to select the most relevant and unique articles on AI and robotics every 2 hours.
 - **Strict Editorial Filtering**: Filters out irrelevant, purely scientific, product/finance, entertainment, or PR news; focuses on real-world, diverse, impactful developments.
 - **Unusual & Fun Picks**: Includes up to one "funny" or odd story per cycle to keep the feed engaging.
 - **Fully Automated Telegram Posting**: Publishes summaries with links to the Telegram channel using Markdown formatting.
@@ -105,7 +105,7 @@ cd ai_robotics_news_bot
 mkdir -p ./data/n8n ./data/mysql
 ```
 
-Copy `n8n_mysql-compose.yaml` to `docker-compose.yaml` (included in the repo):
+Copy `n8n_mysql-compose.yaml` to `docker-compose.yaml` (in the main repo folder):
 ```sh
 cp n8n_mysql-compose.yaml docker-compose.yaml
 ```
@@ -123,7 +123,7 @@ docker ps
 
 ### 4. Setup MySQL Database
 
-Connect to the Mysql container as admin:
+Connect to the Mysql container as admin using set password from `docker-compose.yaml`:
 ```sh
 docker exec -it n8n-mysql-1 mysql -u root -p
 ```
@@ -141,7 +141,7 @@ GRANT ALL PRIVILEGES ON n8n_news.* TO 'n8n_user'@'%';
 FLUSH PRIVILEGES;
 ```
 
-Connect to the Mysql as user `n8n_user` to `n8n_news`:
+Exit then connect to the Mysql as user `n8n_user` to `n8n_news`:
 ```sh
 docker exec -it n8n-mysql-1 mysql -u n8n_user -p n8n_news
 ```
@@ -177,19 +177,26 @@ Output should be like:
 ### 5. Import & Configure n8n Workflows
 
 * Open `http://localhost:5678` and log into n8n.
-* Create two blank workflows, then import JSON files (`newsdata_io.json`, `error_handler.json`) from `./workflows/`.
-* Connect Credentials:
-  * `Query Auth` for newsdata.io API key
+* Create two blank workflows, then import JSON files (`newsdata_io.json`, `error_handler.json`) from `./workflows/` and rename them accordingly to:
+  * `Newsdata.io`,
+  * `Error Handler`.
+
+![import_workflow](./docs/import_workflow.png)  
+
+* Create and connect credentials:
+  * `Query Auth` for newsdata.io API key (name: `apikey`)
   * `MySQL` DB credentials (hostname: `mysql`)
   * `Mistral` API key (for LLM)
   * `Telegram` Bot API key
 
-Set workflows' settings as follows:
-* Error Workflow: link `error_handler`
-* Timezone: your local/operation timezone
-* Executions Saving: Off or minimal, for performance
+![credentials](./docs/credentials.png)
 
-Test `newsdata_io` workflow manually, then activate for full automation.
+Set workflows' settings as follows:
+* Error Workflow: specify `error_handler` in `newsdata_io` workflow settings, see [more](https://docs.n8n.io/flow-logic/error-handling/#create-and-set-an-error-workflow)
+* Timezone: `UTC` (to be compatible with newsdata.io publication datetime)
+* Executions Saving: off or minimal, for performance
+
+Test `newsdata_io` workflow manually, then activate both workwlows for full automation.
 
 
 

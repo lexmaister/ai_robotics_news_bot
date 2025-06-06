@@ -1,21 +1,10 @@
 {
-  "name": "error_handler",
+  "name": "Error Handler",
   "nodes": [
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.errorTrigger",
-      "typeVersion": 1,
-      "position": [
-        -220,
-        -240
-      ],
-      "id": "728596a6-60a2-4d0d-b767-09b30a17dc54",
-      "name": "Error Trigger"
-    },
     {
       "parameters": {
         "chatId": "900144668",
-        "text": "=🚨 Workflow error!\n\nMessage: {{$json[\"message\"] ?? $json[\"error\"][\"message\"] ?? \"Unknown error\"}}\nWorkflow: {{$json[\"workflow\"][\"name\"] ?? \"unknown\"}}\nWorkflow ID: {{$json[\"workflow\"][\"id\"] ?? \"unknown\"}}\nExecution ID: {{$json[\"execution\"][\"id\"] ?? \"unknown\"}}\nTime: {{$json[\"workflow\"][\"startedAt\"] ?? \"unknown\"}}",
+        "text": "=🚨 Workflow error!\n\nMessage: {{ $json.execution.error.message ?? \"Unknown error\" }}\nWorkflow: {{ $json[\"workflow\"][\"name\"] ?? \"unknown\" }}\nExecution ID: {{ $json[\"execution\"][\"id\"] ?? \"unknown\" }}\nLast Node Executed: {{$json[\"execution\"][\"lastNodeExecuted\"] ?? \"unknown\"}}\nTime: {{ $now.plus(3, 'hours').format('yyyy-MM-dd HH.mm.ss') }}",
         "additionalFields": {
           "appendAttribution": false
         }
@@ -23,18 +12,29 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        0,
-        -240
+        260,
+        0
       ],
-      "id": "b7d04f7a-62ca-47de-864a-d14690b9f94e",
+      "id": "b88e8f61-5041-45a7-b4a5-33deea3d8ef1",
       "name": "Post to robotics_ai_news_bot",
       "webhookId": "f42c43ba-1a98-4054-89af-a69253ddde59",
       "credentials": {
         "telegramApi": {
-          "id": "K1LZIFVas5SsLCCN",
-          "name": "Telegram account"
+          "id": "wc8DQPLdyGvUY7F6",
+          "name": "robotics_ai_news_bot"
         }
       }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d0b44fae-9dd3-4a2f-90fa-31fa0a7c922e",
+      "name": "Error Trigger"
     }
   ],
   "pinData": {},
@@ -55,12 +55,13 @@
   "settings": {
     "executionOrder": "v1",
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": "XcYHDQ6vZR1EICxi"
+    "timezone": "Etc/UTC"
   },
-  "versionId": "8b810925-310e-4462-b4d4-4b99bddc95fe",
+  "versionId": "b100ce36-c608-4dd3-8492-0145776c20bf",
   "meta": {
-    "instanceId": "b4077f4812fd4c10dc17262c65b38e9abcbfce9d0ed9b9b5f819ae92d347c82c"
+    "templateCredsSetupCompleted": true,
+    "instanceId": "00113ea425e724c18a3fc809567de94b8a61e09467a8efec875b51558c9ac8e3"
   },
-  "id": "XcYHDQ6vZR1EICxi",
+  "id": "3KrC76L2tkEns519",
   "tags": []
 }
