@@ -198,33 +198,34 @@ Set workflows' settings as follows:
 
 Test `newsdata_io` workflow manually, then activate both workwlows for full automation.
 
+## How It Works
 
+### Scheduled Trigger
+Every 2 hours, the workflow automatically checks for new articles from the past 48 hours that have not been posted.
 
+### News Aggregation
+Articles are gathered using the newsdata.io API with a focus on AI, robotics, and global coverage. The system filters incoming articles to remove duplicates and avoid reposting.
 
-How It Works (Step-by-Step)
-Scheduled Trigger: Every 2 hours, the workflow checks for new, unposted articles from the last 48 hours.
-News Aggregation:
-Pulls articles using newsdata.io’s API (focused on AI, robotics, global regions).
-Filters and deduplicates (no reposting).
-Editorial Selection:
-Compiles candidate articles and passes summaries to a Mistral-powered LLM agent.
-LLM agent selects the 5 most relevant and interesting articles by strict editorial guidelines (see detailed criteria).
-Posting:
+### Editorial Selection
+Articles are summarized and passed to an AI-based agent powered by the Mistral LLM, which selects up to the top 3 most relevant articles based on strict editorial guidelines.
+
+### Publishing
 For each selected article:
-Marks as “posted” in the DB.
-Publishes nicely formatted Markdown post to @robotics_ai_news via Telegram Bot API.
-Error Handling: Robust error workflow logs or alerts for any issue (failed API, empty/dead responses, etc).
-Editorial Guidelines
-Priority: Real-world, practical applications and impacts.
-Scope: Both AI and Robotics—diversity in source, topic, and region.
-Exclusions:
-No finance, investments, funding rounds, press releases, entertainment, or celebrity features.
-No product launches or disguised PR.
-No pure research without real-world context.
-Selection:
-Up to 1 “unusual”, funny, or surprising news item per selection (rest must be impactful).
-Prefer articles with new findings, international impact, or ethical debates.
-Avoid duplicate or highly similar stories.
+* It is marked as "posted" in the database.
+* A formatted Markdown post is published to the [AI and Robotics News](https://t.me/robotics_ai_news) Telegram channel via the Telegram Bot API.
+
+### Error Handling
+Any issues, such as failed API calls or empty responses, are managed through an `Error Handler` workflow that logs errors and sends alerts to Telegram.
+
+### Editorial Guidelines
+* Priority: Articles emphasizing real-world applications and significant impact.
+* Scope: Covers both AI and robotics topics, ensuring diversity in sources, topics, and regions.
+* Exclusions: Content related to finance, PR, entertainment, celebrities, or product launches. Pure academic research without practical applications is omitted.
+* Selection Criteria: Includes global impact, innovative findings, ethical discussions, and one "fun" or surprising news piece per cycle.
+
+### Workflow Summary
+Aggregates news automatically, filters articles, and ensures fully automated publishing.
+Operates on predefined rules for top-quality, impactful, and engaging content.
 
 ## Maintenance & Troubleshooting
 * Extend sources: Tweak queries in the Endpoint Generator node to broaden or narrow search.
