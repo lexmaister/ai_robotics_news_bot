@@ -1,4 +1,4 @@
-# AI & Robotics Lab News Feed Bot
+# AI & Robotics News Feed Bot
 
 A **self-hosted, fully automated Telegram bot** that curates and delivers the most interesting, unusual, and high-quality news on Artificial Intelligence (AI) and Robotics directly to the [AI and Robotics News](https://t.me/robotics_ai_news) Telegram Channel. Built for advanced tech enthusiasts and professionals, the bot collects news from leading sources, applies strict editorial rules, and posts concise updates every few hours — all with zero code required, thanks to n8n automation.
 
