@@ -135,6 +135,15 @@ PREFECT_API_URL=http://prefect-server:4200/api
 
 (Do not use `localhost` from inside a container; inside the container `localhost` refers to the container itself.)
 
+To prove DNS + connectivity from inside the network, run a temporary container on `prefect-net`:
+
+```sh
+docker run --rm --network prefect-net curlimages/curl \
+  curl -sS http://prefect-server:4200/api/health && echo ""
+```
+
+It should return `true`.
+
 ### 4. Persistence and data location (named volumes)
 
 The server compose uses Docker named volumes for persistence (Postgres/Redis). On Linux, Docker typically stores named volumes under Docker’s root directory (often `/var/lib/docker`).
@@ -149,3 +158,81 @@ docker info | grep -i "Docker Root Dir"
 
 If you reinstall/wipe the OS, named volumes will be lost unless you back up the database (recommended: logical backup via `pg_dump`).
 
+## Environment setup
+
+Make project dir and clone repo into it:
+
+```sh
+mkdir news_curation_agent
+cd news_curation_agent
+git clone https://github.com/lexmaister/ai_robotics_news_bot.git
+# add private dir to store secrets and settings
+mkdir -p private/env
+```
+
+## OpenRouter test flow (dev)
+
+This project includes a simple Prefect flow to validate **OpenRouter** connectivity (LLM call) from a dockerized client container that can also reach the local Prefect server over the shared Docker network.
+
+### Prerequisites
+
+- Prefect server is running
+- `prefect-net` is up
+
+### Setup Environment
+
+Create `private/env/prefect.dev.env` file and add to it:
+
+```sh
+PREFECT_API_URL=http://prefect-server:4200/api
+OPENROUTER_API_KEY=...
+
+# Optional
+OPENROUTER_MODEL=stepfun/step-3.5-flash:free
+PREFECT_LOGGING_LEVEL=INFO
+```
+
+### Dev runner container (does not auto-run flows)
+
+Dev compose in that case:
+
+- uses `prefecthq/prefect:3-latest`
+- joins the external network `prefect-net`
+- installs Python deps from `requirements.txt`
+- stays running (so you can run flows manually via `docker exec`)
+
+Start the dev container (from repo root `news_curation_agent/ai_robotics_news_bot/`):
+
+```sh
+docker compose -f compose/docker-compose.dev.yml up -d
+```
+
+Run the OpenRouter test flow manually:
+
+```sh
+docker exec -it ai-news-worker-dev python -m src.flows.test_openrouter
+```
+
+Check flow result in [Prefect server web](http://localhost:4200/api/)
+
+View logs (optional):
+
+```sh
+docker logs -f ai-news-worker-dev
+```
+
+Stop:
+
+```sh
+docker compose -f compose/docker-compose.dev.yml down
+```
+
+### Health checks / troubleshooting
+
+- Prefect server health (from host):
+  - <http://localhost:4200/api/health>
+
+- Container-to-container Prefect API target (from containers on `prefect-net`):
+  - PREFECT_API_URL=<http://prefect-server:4200/api>
+
+If the OpenRouter flow fails, first confirm `OPENROUTER_API_KEY` is present in `private/env/prefect.dev.env` and that `requirements.txt` includes the required `openai` package.

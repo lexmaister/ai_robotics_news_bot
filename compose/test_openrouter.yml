@@ -1,0 +1,30 @@
+services:
+  worker-dev:
+    image: prefecthq/prefect:3-latest
+    container_name: ai-news-worker-dev
+    working_dir: /app
+
+    env_file:
+      - ../../private/env/prefect.dev.env
+
+    networks:
+      - prefect-net
+
+    volumes:
+      - ../src:/app/src:ro
+      - ../requirements.txt:/app/requirements.txt:ro
+
+    # Install deps once at container start, then stay alive.
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        python -m pip install --no-cache-dir -U pip &&
+        pip install --no-cache-dir -r /app/requirements.txt &&
+        tail -f /dev/null
+
+    restart: "no"
+
+networks:
+  prefect-net:
+    external: true
