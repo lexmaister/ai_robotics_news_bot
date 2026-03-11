@@ -219,7 +219,7 @@ Run the OpenRouter test flow manually:
 docker exec -it ai-news-worker-dev python -m src.flows.test_openrouter
 ```
 
-Check flow result in [Prefect server web](http://localhost:4200/api/)
+Check flow result in [Prefect server web](http://localhost:4200/dashboard)
 
 View logs (optional):
 
