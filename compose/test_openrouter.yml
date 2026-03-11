@@ -23,6 +23,13 @@ services:
         pip install --no-cache-dir -r /app/requirements.txt &&
         tail -f /dev/null
 
+    healthcheck:
+      test: ["CMD", "python", "-c", "import openai"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
     restart: "no"
 
 networks:

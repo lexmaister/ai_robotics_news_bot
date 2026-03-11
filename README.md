@@ -207,6 +207,12 @@ Start the dev container (from repo root `news_curation_agent/ai_robotics_news_bo
 docker compose -f compose/test_openrouter.yml up -d
 ```
 
+Check while container is become `healthy`:
+
+```sh
+docker inspect -f '{{.State.Health.Status}}' ai-news-worker-dev
+```
+
 Run the OpenRouter test flow manually:
 
 ```sh
