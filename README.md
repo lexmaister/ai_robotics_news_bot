@@ -204,7 +204,7 @@ Dev compose in that case:
 Start the dev container (from repo root `news_curation_agent/ai_robotics_news_bot/`):
 
 ```sh
-docker compose -f compose/docker-compose.dev.yml up -d
+docker compose -f compose/test_openrouter.yml up -d
 ```
 
 Run the OpenRouter test flow manually:
