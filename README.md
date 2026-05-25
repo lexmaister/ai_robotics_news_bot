@@ -1,6 +1,6 @@
 # AI & Robotics News Curation Bot
 
-A **self-hosted, fully automated Telegram bot** that curates and delivers high-quality AI and Robotics news to the [AI and Robotics News](https://t.me/robotics_ai_news) Telegram Channel.
+A **self-hosted, fully automated Telegram bot** that curates and delivers high-quality AI and Robotics news to the [AI and Robotics News](https://t.me/) Telegram Channel.
 
 **Architecture:** Prefect 3 for workflow orchestration, PostgreSQL + pgvector for data and embeddings, OpenRouter for LLM curation, newsdata.io for ingestion.
 
@@ -8,6 +8,7 @@ A **self-hosted, fully automated Telegram bot** that curates and delivers high-q
 
 ## Project Structure
 
+```
 ai_robotics_news_bot/
 ├── docker-compose.yml            # Unified: profiles [server] + [worker]
 ├── Dockerfile                    # Worker image
@@ -42,6 +43,7 @@ ai_robotics_news_bot/
 │   └── analytics_flow.py
 │
 └── tests/
+```
 
 ---
 
@@ -49,37 +51,47 @@ ai_robotics_news_bot/
 
 ### 1. Clone and configure
 
+```bash
 git clone https://github.com/lexmaister/ai_robotics_news_bot.git
 cd ai_robotics_news_bot
 cp .env.example .env
 # Edit .env with your actual secrets
+```
 
 ### 2. Start the server infrastructure
 
+```bash
 docker compose --profile server up -d
+```
 
 This starts: PostgreSQL (with pgvector), Redis, Prefect API server (headless, no UI), Prefect background services.
 
 ### 3. Start the worker
 
+```bash
 docker compose --profile worker up -d
+```
 
 ### 4. Verify
 
+```bash
 # Health check
 curl -s http://localhost:4200/api/health
 # → true
 
 # View worker logs
 docker compose logs -f worker
+```
 
 ### 5. Tear down
 
+```bash
 # Stop everything
 docker compose --profile server --profile worker down
 
 # Stop + delete volumes (loses all data)
 docker compose --profile server --profile worker down -v
+```
 
 ---
 
@@ -103,6 +115,7 @@ docker compose --profile server --profile worker down -v
 
 All secrets and configuration live in a single `.env` file (never committed):
 
+```bash
 # Infrastructure
 POSTGRES_PASSWORD=your_secure_password
 
@@ -115,6 +128,7 @@ CURATION_MODEL=mistralai/mistral-large-latest
 # Telegram
 TELEGRAM_BOT_TOKEN=123456:ABC-xxxxxxxxxxxxx
 TELEGRAM_CHANNEL_ID=-1001234567890
+```
 
 ---
 
@@ -133,10 +147,12 @@ The `db/init/01-create-databases.sql` script creates both on first start. See `d
 
 Volumes mount `src/`, `flows/`, and `config/` into the worker container for live editing:
 
+```yaml
 volumes:
   - ./config:/app/config:ro
   - ./src:/app/src
   - ./flows:/app/flows
+```
 
 For production: remove dev mounts, bake code into the Docker image, tag with git version.
 
@@ -144,6 +160,7 @@ For production: remove dev mounts, bake code into the Docker image, tag with git
 
 ## Useful Commands
 
+```bash
 # Start server only
 docker compose --profile server up -d
 
@@ -162,6 +179,7 @@ curl -s http://localhost:4200/api/health
 # View logs
 docker compose logs -f worker
 docker compose logs -f prefect-server
+```
 
 ---
 
@@ -171,8 +189,10 @@ PostgreSQL data is stored in a Docker named volume (`postgres_data`). If the hos
 
 Recommended periodic backups:
 
+```bash
 docker exec ai_robotics_news_bot-postgres-1 pg_dump -U admin newsbot > backup_newsbot.sql
 docker exec ai_robotics_news_bot-postgres-1 pg_dump -U admin prefect > backup_prefect.sql
+```
 
 ---
 
