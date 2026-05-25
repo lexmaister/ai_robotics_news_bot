@@ -1,244 +1,181 @@
 # AI & Robotics News Curation Bot
 
-A **self-hosted, fully automated Telegram bot** that curates and delivers the most interesting, unusual, and high-quality news on Artificial Intelligence (AI) and Robotics directly to the [AI and Robotics News](https://t.me/robotics_ai_news) Telegram Channel.
+A **self-hosted, fully automated Telegram bot** that curates and delivers high-quality AI and Robotics news to the [AI and Robotics News](https://t.me/robotics_ai_news) Telegram Channel.
 
-## Prefect Server Self-hosted basic setup
+**Architecture:** Prefect 3 for workflow orchestration, PostgreSQL + pgvector for data and embeddings, OpenRouter for LLM curation, newsdata.io for ingestion.
 
-This project assumes you run a local self-hosted Prefect Server (API + UI) on your PC and connect one or more worker stacks to it over a shared Docker network.
+---
 
-The worker stack (this repo) connects to the server via Docker DNS on a shared external network.
+## Project Structure
 
-### 1. One-time network setup
+ai_robotics_news_bot/
+├── docker-compose.yml            # Unified: profiles [server] + [worker]
+├── Dockerfile                    # Worker image
+├── .env                          # All secrets (gitignored)
+├── .env.example                  # Template with placeholders (tracked)
+├── .gitignore
+│
+├── config/                       # Declarative configuration (YAML)
+│   ├── sources_whitelist.yml     # Allowed newsdata.io sources + priority scores
+│   ├── settings.yml              # Tunables: intervals, thresholds, model names
+│   └── prompts/                  # LLM prompt templates
+│       ├── curation.md
+│       └── categorization.md
+│
+├── db/
+│   ├── init/
+│   │   └── 01-create-databases.sql   # Creates newsbot DB + pgvector extension
+│   └── schema.sql                    # Current schema reference (manually maintained)
+│
+├── src/                          # Application logic
+│   ├── __init__.py
+│   ├── config.py                 # Loads config/*.yml + env vars
+│   ├── db.py                     # DB connection and queries
+│   ├── embeddings.py             # Embedding model calls
+│   ├── ingestion.py              # newsdata.io fetcher
+│   ├── curation.py               # LLM curation logic (OpenRouter)
+│   ├── publisher.py              # Telegram posting
+│   └── analytics.py              # Metrics and reporting
+│
+├── flows/                        # Prefect flow definitions
+│   ├── daily_news_flow.py
+│   └── analytics_flow.py
+│
+└── tests/
 
-Create the shared external Docker network once:
+---
 
-```sh
-docker network create prefect-net
-```
+## Quick Start
 
-Both the Prefect Server stack and all worker stacks must attach to this same external network.
+### 1. Clone and configure
 
-### 2. Start the Prefect Server stack
+git clone https://github.com/lexmaister/ai_robotics_news_bot.git
+cd ai_robotics_news_bot
+cp .env.example .env
+# Edit .env with your actual secrets
 
-For local-only purpose you can use this basic setup based on [tutorial](https://docs.prefect.io/v3/how-to-guides/self-hosted/docker-compose#how-to-run-the-prefect-server-via-docker-compose)
+### 2. Start the server infrastructure
 
-```yml
-services:
-  postgres:
-    image: postgres:14
-    environment:
-      POSTGRES_USER: prefect
-      POSTGRES_PASSWORD: prefect
-      POSTGRES_DB: prefect
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prefect"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - prefect-net
+docker compose --profile server up -d
 
-  redis:
-    image: redis:7
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - prefect-net
+This starts: PostgreSQL (with pgvector), Redis, Prefect API server (headless, no UI), Prefect background services.
 
-  prefect-server:
-    image: prefecthq/prefect:3-latest
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
-      PREFECT_SERVER_API_HOST: 0.0.0.0
-      PREFECT_SERVER_UI_API_URL: http://localhost:4200/api
-      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
-      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
-      PREFECT_REDIS_MESSAGING_HOST: redis
-      PREFECT_REDIS_MESSAGING_PORT: 6379
-      PREFECT_REDIS_MESSAGING_DB: 0
-    command: prefect server start --no-services
-    ports:
-      - "4200:4200"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request as u; u.urlopen('http://localhost:4200/api/health', timeout=1)"
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    networks:
-      - prefect-net
+### 3. Start the worker
 
-  prefect-services:
-    image: prefecthq/prefect:3-latest
-    depends_on:
-      prefect-server:
-        condition: service_healthy
-    environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
-      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
-      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
-      PREFECT_REDIS_MESSAGING_HOST: redis
-      PREFECT_REDIS_MESSAGING_PORT: 6379
-      PREFECT_REDIS_MESSAGING_DB: 0
-    command: prefect server services start
-    networks:
-      - prefect-net
+docker compose --profile worker up -d
+
+### 4. Verify
+
+# Health check
+curl -s http://localhost:4200/api/health
+# → true
+
+# View worker logs
+docker compose logs -f worker
+
+### 5. Tear down
+
+# Stop everything
+docker compose --profile server --profile worker down
+
+# Stop + delete volumes (loses all data)
+docker compose --profile server --profile worker down -v
+
+---
+
+## Architecture Decisions
+
+| Topic | Decision | Rationale |
+|-------|----------|-----------|
+| Networking | Compose default network | One fewer setup step, fully declarative |
+| Compose structure | Single file with profiles `[server]` + `[worker]` | Zero manual steps, clear separation |
+| UI | Disabled (`--no-ui`) | CLI-only operation, less resource usage |
+| Database | PostgreSQL 16 + pgvector | One server, two DBs: `prefect` + `newsbot` |
+| Vector search | pgvector in `newsbot` DB | Hybrid SQL + vector queries, no extra service |
+| Branching | Single `main` branch + git tags | Solo maintainer, no coordination overhead |
+| Secrets | Single `.env` at project root | Compose reads automatically, gitignored |
+| Schema management | Manual `schema.sql` + init script | Minimal; add Alembic when data is valuable |
+| Config | YAML in `config/`, mounted read-only | Editable without code changes or rebuilds |
+
+---
+
+## Environment Variables
+
+All secrets and configuration live in a single `.env` file (never committed):
+
+# Infrastructure
+POSTGRES_PASSWORD=your_secure_password
+
+# External APIs
+NEWSDATA_API_KEY=pub_xxxxxxxxxxxxx
+OPENROUTER_API_KEY=sk-or-xxxxxxxxxxxxx
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+CURATION_MODEL=mistralai/mistral-large-latest
+
+# Telegram
+TELEGRAM_BOT_TOKEN=123456:ABC-xxxxxxxxxxxxx
+TELEGRAM_CHANNEL_ID=-1001234567890
+
+---
+
+## Database Architecture
+
+Single PostgreSQL instance (`pgvector/pgvector:pg16`), two databases:
+
+- **`prefect`** — Prefect internal state (flows, runs, schedules)
+- **`newsbot`** — Application data (articles, embeddings, metadata, analytics)
+
+The `db/init/01-create-databases.sql` script creates both on first start. See `db/schema.sql` for the current `newsbot` schema.
+
+---
+
+## Development
+
+Volumes mount `src/`, `flows/`, and `config/` into the worker container for live editing:
 
 volumes:
-  postgres_data:
-  redis_data:
+  - ./config:/app/config:ro
+  - ./src:/app/src
+  - ./flows:/app/flows
 
-networks:
-  prefect-net:
-    external: true
-```
+For production: remove dev mounts, bake code into the Docker image, tag with git version.
 
-Save this file as `run_prefect_server.yml` and from its directory run the prefect server:
+---
 
-```sh
-docker compose -f run_prefect_server.yml up -d
-```
+## Useful Commands
 
-Check if server is running. Open Prefect UI:
+# Start server only
+docker compose --profile server up -d
 
-- <http://localhost:4200>
+# Start worker only (server must be running)
+docker compose --profile worker up -d
 
-Health endpoint:
+# Restart worker after code changes
+docker compose --profile worker restart
 
-- <http://localhost:4200/api/health>
+# Run a flow manually
+docker exec -it ai_robotics_news_bot-worker-1 python -m flows.daily_news_flow
 
-### 3. How workers connect
+# Check Prefect API health
+curl -s http://localhost:4200/api/health
 
-When a worker container is attached to `prefect-net`, it should use the server’s Docker service name:
+# View logs
+docker compose logs -f worker
+docker compose logs -f prefect-server
 
-```yml
-PREFECT_API_URL=http://prefect-server:4200/api
-```
+---
 
-(Do not use `localhost` from inside a container; inside the container `localhost` refers to the container itself.)
+## Persistence and Backups
 
-To prove DNS + connectivity from inside the network, run a temporary container on `prefect-net`:
+PostgreSQL data is stored in a Docker named volume (`postgres_data`). If the host OS is reinstalled, volumes are lost.
 
-```sh
-docker run --rm --network prefect-net curlimages/curl \
-  curl -sS http://prefect-server:4200/api/health && echo ""
-```
+Recommended periodic backups:
 
-It should return `true`.
+docker exec ai_robotics_news_bot-postgres-1 pg_dump -U admin newsbot > backup_newsbot.sql
+docker exec ai_robotics_news_bot-postgres-1 pg_dump -U admin prefect > backup_prefect.sql
 
-### 4. Persistence and data location (named volumes)
+---
 
-The server compose uses Docker named volumes for persistence (Postgres/Redis). On Linux, Docker typically stores named volumes under Docker’s root directory (often `/var/lib/docker`).
+## License
 
-Useful commands:
-
-```sh
-docker volume ls
-docker volume inspect <volume_name>   (look for “Mountpoint”)
-docker info | grep -i "Docker Root Dir"
-```
-
-If you reinstall/wipe the OS, named volumes will be lost unless you back up the database (recommended: logical backup via `pg_dump`).
-
-## Environment setup
-
-Make project dir and clone repo into it:
-
-```sh
-mkdir news_curation_agent
-cd news_curation_agent
-git clone https://github.com/lexmaister/ai_robotics_news_bot.git
-# add private dir to store secrets and settings
-mkdir -p private/env
-```
-
-## OpenRouter test flow (dev)
-
-This project includes a simple Prefect flow to validate **OpenRouter** connectivity (LLM call) from a dockerized client container that can also reach the local Prefect server over the shared Docker network.
-
-### Prerequisites
-
-- Prefect server is running
-- `prefect-net` is up
-
-### Setup Environment
-
-Create `private/env/prefect.dev.env` file and add to it:
-
-```sh
-PREFECT_API_URL=http://prefect-server:4200/api
-OPENROUTER_API_KEY=...
-
-# Optional
-OPENROUTER_MODEL=stepfun/step-3.5-flash:free
-PREFECT_LOGGING_LEVEL=INFO
-```
-
-### Dev runner container (does not auto-run flows)
-
-Dev compose in that case:
-
-- uses `prefecthq/prefect:3-latest`
-- joins the external network `prefect-net`
-- installs Python deps from `requirements.txt`
-- stays running (so you can run flows manually via `docker exec`)
-
-Start the dev container (from repo root `news_curation_agent/ai_robotics_news_bot/`):
-
-```sh
-docker compose -f compose/test_openrouter.yml up -d
-```
-
-Check while container is become `healthy`:
-
-```sh
-docker inspect -f '{{.State.Health.Status}}' ai-news-worker-dev
-```
-
-Run the OpenRouter test flow manually:
-
-```sh
-docker exec -it ai-news-worker-dev python -m src.flows.test_openrouter
-```
-
-Check flow result in [Prefect server web](http://localhost:4200/dashboard)
-
-View logs (optional):
-
-```sh
-docker logs -f ai-news-worker-dev
-```
-
-Stop:
-
-```sh
-docker compose -f compose/docker-compose.dev.yml down
-```
-
-### Health checks / troubleshooting
-
-- Prefect server health (from host):
-  - <http://localhost:4200/api/health>
-
-- Container-to-container Prefect API target (from containers on `prefect-net`):
-  - PREFECT_API_URL=<http://prefect-server:4200/api>
-
-If the OpenRouter flow fails, first confirm `OPENROUTER_API_KEY` is present in `private/env/prefect.dev.env` and that `requirements.txt` includes the required `openai` package.
+MIT
