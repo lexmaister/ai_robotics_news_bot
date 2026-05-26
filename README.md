@@ -66,17 +66,25 @@ docker compose --profile server up -d
 
 This starts: PostgreSQL (with pgvector), Redis, Prefect API server (headless, no UI), Prefect background services.
 
-#### Accessing Prefect UI via SSH Tunnel
+### 3. Verify Prefect Server is running
+
+```bash
+# Health check
+curl -s http://localhost:4200/api/health && echo ""
+# → true
+```
+
+### 4. Accessing Prefect UI via SSH Tunnel
 
 If your Prefect server is running on a remote machine, you can access the dashboard locally through an SSH tunnel.
 
-##### Prerequisites
+#### Prerequisites
 - SSH access to the remote server (password or ssh-key)
 - Prefect server container running with these environment variables:
     PREFECT_SERVER_API_HOST: 0.0.0.0
     PREFECT_UI_API_URL: http://127.0.0.1:4200/api
 
-##### Setting up the tunnel
+#### Setting up the tunnel
 
 Using terminal:
 
@@ -84,7 +92,7 @@ Using terminal:
 ssh -L 4200:127.0.0.1:4200 user@your-server-ip
 ```
 
-##### Access the dashboard
+#### Access the dashboard
 
 Once the tunnel is active, open in your browser:
 
@@ -92,30 +100,22 @@ Once the tunnel is active, open in your browser:
 http://127.0.0.1:4200/dashboard
 ```
 
-##### Notes
+#### Notes
 - PREFECT_SERVER_API_HOST: 0.0.0.0 ensures the server listens on all interfaces
   inside the container, allowing Docker port mapping to work.
 - PREFECT_UI_API_URL: http://127.0.0.1:4200/api tells the browser-based UI
   to call the API at your local tunneled address instead of the default 0.0.0.0.
 
-### 3. Start the worker
+### 5. Start the worker
 
 ```bash
 docker compose --profile worker up -d
-```
-
-### 4. Verify
-
-```bash
-# Health check
-curl -s http://localhost:4200/api/health
-# → true
 
 # View worker logs
 docker compose logs -f worker
 ```
 
-### 5. Tear down
+### 6. Tear down
 
 ```bash
 # Stop everything
@@ -133,7 +133,6 @@ docker compose --profile server --profile worker down -v
 |-------|----------|-----------|
 | Networking | Compose default network | One fewer setup step, fully declarative |
 | Compose structure | Single file with profiles `[server]` + `[worker]` | Zero manual steps, clear separation |
-| UI | Disabled (`--no-ui`) | CLI-only operation, less resource usage |
 | Database | PostgreSQL 16 + pgvector | One server, two DBs: `prefect` + `newsbot` |
 | Vector search | pgvector in `newsbot` DB | Hybrid SQL + vector queries, no extra service |
 | Branching | Single `main` branch + git tags | Solo maintainer, no coordination overhead |
