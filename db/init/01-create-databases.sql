@@ -1,0 +1,4 @@
+CREATE DATABASE newsbot;
+\c newsbot
+CREATE EXTENSION IF NOT EXISTS vector;
+
