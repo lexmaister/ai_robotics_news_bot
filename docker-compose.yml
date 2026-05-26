@@ -87,6 +87,41 @@ services:
       PREFECT_REDIS_MESSAGING_DB: 0
     command: prefect server services start
 
+  # ═══════════════════════════════════════════════════════════════
+  # WORKER PROFILE
+  # ═══════════════════════════════════════════════════════════════
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: news_worker
+    command: prefect worker start --pool default-agent-pool --type process
+    environment:
+      PREFECT_API_URL: "http://prefect-server:4200/api"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: prefect
+      REDIS_URL: "redis://redis:6379/0"
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID}
+      NEWSDATA_API_KEY: ${NEWSDATA_API_KEY}
+    # overwrite Dockerfile's settings for developing
+    volumes:
+      - ./config:/app/config:ro
+      - ./src:/app/src
+      - ./flows:/app/flows
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
