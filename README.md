@@ -66,6 +66,38 @@ docker compose --profile server up -d
 
 This starts: PostgreSQL (with pgvector), Redis, Prefect API server (headless, no UI), Prefect background services.
 
+#### Accessing Prefect UI via SSH Tunnel
+
+If your Prefect server is running on a remote machine, you can access the dashboard locally through an SSH tunnel.
+
+##### Prerequisites
+- SSH access to the remote server (password or ssh-key)
+- Prefect server container running with these environment variables:
+    PREFECT_SERVER_API_HOST: 0.0.0.0
+    PREFECT_UI_API_URL: http://127.0.0.1:4200/api
+
+##### Setting up the tunnel
+
+Using terminal:
+
+```
+ssh -L 4200:127.0.0.1:4200 user@your-server-ip
+```
+
+##### Access the dashboard
+
+Once the tunnel is active, open in your browser:
+
+```
+http://127.0.0.1:4200/dashboard
+```
+
+##### Notes
+- PREFECT_SERVER_API_HOST: 0.0.0.0 ensures the server listens on all interfaces
+  inside the container, allowing Docker port mapping to work.
+- PREFECT_UI_API_URL: http://127.0.0.1:4200/api tells the browser-based UI
+  to call the API at your local tunneled address instead of the default 0.0.0.0.
+
 ### 3. Start the worker
 
 ```bash
