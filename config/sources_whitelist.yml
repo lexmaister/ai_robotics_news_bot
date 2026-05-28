@@ -1,159 +1,126 @@
 # Whitelisted News Sources for AI & Robotics News Curation Bot
 # Sources validated against newsdata.io index
-# Total: 25 sources
+# Total: 25 sources across 5 rotation groups (5 domains per API call)
+# Groups are rotated run-after-run for consistent quality and diversity
+# Rotation order: A → B → C → D → E → A…
 
-sources:
-  # === Tier 1: Dedicated AI/Robotics (priority 10) ===
-  - domain: therobotreport.com
-    tier: 1
-    priority: 10
-    categories: [robotics, industry, research]
-    description: Dedicated robotics industry news, research, analysis and investment tracking
+groups:
+  A:
+    # Priority sum: 38 | Focus: Robotics + Deep Tech + Research + Geopolitics + Developer
+    sources:
+      - domain: therobotreport.com
+        priority: 10
+        categories: [robotics, industry, research]
+        description: Dedicated robotics industry news, research, analysis and investment tracking
+      - domain: arstechnica.com
+        priority: 8
+        categories: [AI, hardware, science, policy]
+        description: In-depth technical journalism covering hardware, software, science and policy
+      - domain: sciencedaily.com
+        priority: 8
+        categories: [research, robotics, AI]
+        description: Research-focused news from academic institutions, robotics and AI research
+      - domain: reuters.com
+        priority: 7
+        categories: [industry, regulation, deals]
+        description: Major AI deals, regulation, industry moves and global tech policy
+      - domain: hackernoon.com
+        priority: 5
+        categories: [developer, AI, tutorials]
+        description: Community-driven AI/ML practitioner content, developer stories and tutorials
 
-  - domain: technologyreview.com
-    tier: 1
-    priority: 10
-    categories: [AI, research, policy]
-    description: MIT Technology Review — top-tier AI analysis, research breakthroughs and impact
+  B:
+    # Priority sum: 37 | Focus: AI Research + Culture + Science + Finance + Markets
+    sources:
+      - domain: technologyreview.com
+        priority: 10
+        categories: [AI, research, policy]
+        description: MIT Technology Review — top-tier AI analysis, research breakthroughs and impact
+      - domain: theverge.com
+        priority: 8
+        categories: [AI, tech, culture]
+        description: Technology, science, art and culture with in-depth reporting
+      - domain: livescience.com
+        priority: 7
+        categories: [science, research, AI]
+        description: Science and research angle on AI, technology breakthroughs and discoveries
+      - domain: bloomberg.com
+        priority: 7
+        categories: [industry, funding, regulation]
+        description: Breaking AI industry news, funding rounds, regulation and market developments
+      - domain: benzinga.com
+        priority: 5
+        categories: [fintech, markets, AI]
+        description: AI business and market analysis, fintech and investment news
 
-  - domain: venturebeat.com
-    tier: 1
-    priority: 10
-    categories: [AI, enterprise, startups]
-    description: Deep AI/ML enterprise coverage, startup ecosystem and emerging tech
+  C:
+    # Priority sum: 37 | Focus: Enterprise AI + Longform + Hardware + Policy/Econ + Startups
+    sources:
+      - domain: venturebeat.com
+        priority: 10
+        categories: [AI, enterprise, startups]
+        description: Deep AI/ML enterprise coverage, startup ecosystem and emerging tech
+      - domain: wired.com
+        priority: 8
+        categories: [AI, science, culture]
+        description: Long-form technology and science analysis, ideas for a world in transformation
+      - domain: tomshardware.com
+        priority: 7
+        categories: [hardware, AI, benchmarks]
+        description: Hardware and AI industry reporting, technical reviews and benchmarks
+      - domain: ft.com
+        priority: 7
+        categories: [enterprise, policy, economics]
+        description: AI enterprise and policy analysis, financial journalism and economic impact
+      - domain: techbullion.com
+        priority: 5
+        categories: [startups, AI, fintech]
+        description: AI, fintech and startup news, technology industry coverage
 
-  - domain: interestingengineering.com
-    tier: 1
-    priority: 9
-    categories: [robotics, engineering, science]
-    description: Engineering and robotics stories, science and innovation reporting
+  D:
+    # Priority sum: 37 | Focus: Engineering + Startups/VC + Tech Media + Macro Policy + Enterprise B2B
+    sources:
+      - domain: interestingengineering.com
+        priority: 9
+        categories: [robotics, engineering, science]
+        description: Engineering and robotics stories, science and innovation reporting
+      - domain: techcrunch.com
+        priority: 8
+        categories: [startups, AI, funding]
+        description: Technology startups, investments, software and high-tech news
+      - domain: thenextweb.com
+        priority: 7
+        categories: [startups, AI, tech]
+        description: New technologies and startups, creative tech media with global events coverage
+      - domain: economist.com
+        priority: 7
+        categories: [policy, economics, AI]
+        description: In-depth AI impact analysis, global business and technology commentary
+      - domain: zdnet.com
+        priority: 6
+        categories: [enterprise, AI, B2B]
+        description: Practical enterprise AI coverage, B2B technology and digital transformation
 
-  # === Tier 2: Major Tech Publications (priority 7-8) ===
-  - domain: arstechnica.com
-    tier: 2
-    priority: 8
-    categories: [AI, hardware, science, policy]
-    description: In-depth technical journalism covering hardware, software, science and policy
-
-  - domain: theverge.com
-    tier: 2
-    priority: 8
-    categories: [AI, tech, culture]
-    description: Technology, science, art and culture with in-depth reporting
-
-  - domain: wired.com
-    tier: 2
-    priority: 8
-    categories: [AI, science, culture]
-    description: Long-form technology and science analysis, ideas for a world in transformation
-
-  - domain: techcrunch.com
-    tier: 2
-    priority: 8
-    categories: [startups, AI, funding]
-    description: Technology startups, investments, software and high-tech news
-
-  - domain: tomshardware.com
-    tier: 2
-    priority: 7
-    categories: [hardware, AI, benchmarks]
-    description: Hardware and AI industry reporting, technical reviews and benchmarks
-
-  - domain: thenextweb.com
-    tier: 2
-    priority: 7
-    categories: [startups, AI, tech]
-    description: New technologies and startups, creative tech media with global events coverage
-
-  - domain: cnet.com
-    tier: 2
-    priority: 7
-    categories: [AI, consumer, software]
-    description: Technology news, AI, software, innovation and product coverage
-
-  # === Tier 3: Science/Research (priority 7-8) ===
-  - domain: sciencedaily.com
-    tier: 3
-    priority: 8
-    categories: [research, robotics, AI]
-    description: Research-focused news from academic institutions, robotics and AI research
-
-  - domain: newscientist.com
-    tier: 3
-    priority: 8
-    categories: [research, science, AI]
-    description: Science-focused reporting on robotics, AI research and emerging technologies
-
-  - domain: livescience.com
-    tier: 3
-    priority: 7
-    categories: [science, research, AI]
-    description: Science and research angle on AI, technology breakthroughs and discoveries
-
-  # === Tier 4: Business/Industry (priority 6-7) ===
-  - domain: reuters.com
-    tier: 4
-    priority: 7
-    categories: [industry, regulation, deals]
-    description: Major AI deals, regulation, industry moves and global tech policy
-
-  - domain: bloomberg.com
-    tier: 4
-    priority: 7
-    categories: [industry, funding, regulation]
-    description: Breaking AI industry news, funding rounds, regulation and market developments
-
-  - domain: ft.com
-    tier: 4
-    priority: 7
-    categories: [enterprise, policy, economics]
-    description: AI enterprise and policy analysis, financial journalism and economic impact
-
-  - domain: forbes.com
-    tier: 4
-    priority: 6
-    categories: [business, AI, rankings]
-    description: Business, technology and finance with influential rankings and reporting
-
-  - domain: cnbc.com
-    tier: 4
-    priority: 6
-    categories: [business, markets, AI]
-    description: Real-time AI business news, market coverage and financial analysis
-
-  - domain: economist.com
-    tier: 4
-    priority: 7
-    categories: [policy, economics, AI]
-    description: In-depth AI impact analysis, global business and technology commentary
-
-  - domain: zdnet.com
-    tier: 4
-    priority: 6
-    categories: [enterprise, AI, B2B]
-    description: Practical enterprise AI coverage, B2B technology and digital transformation
-
-  - domain: theguardian.com
-    tier: 4
-    priority: 6
-    categories: [policy, society, AI]
-    description: AI coverage, technology policy, regulation and society impact
-
-  # === Tier 5: Community/Practitioner (priority 5) ===
-  - domain: hackernoon.com
-    tier: 5
-    priority: 5
-    categories: [developer, AI, tutorials]
-    description: Community-driven AI/ML practitioner content, developer stories and tutorials
-
-  - domain: benzinga.com
-    tier: 5
-    priority: 5
-    categories: [fintech, markets, AI]
-    description: AI business and market analysis, fintech and investment news
-
-  - domain: techbullion.com
-    tier: 5
-    priority: 5
-    categories: [startups, AI, fintech]
-    description: AI, fintech and startup news, technology industry coverage
+  E:
+    # Priority sum: 33 | Focus: Science + Consumer + Business + Markets + Society/Policy
+    sources:
+      - domain: newscientist.com
+        priority: 8
+        categories: [research, science, AI]
+        description: Science-focused reporting on robotics, AI research and emerging technologies
+      - domain: cnet.com
+        priority: 7
+        categories: [AI, consumer, software]
+        description: Technology news, AI, software, innovation and product coverage
+      - domain: forbes.com
+        priority: 6
+        categories: [business, AI, rankings]
+        description: Business, technology and finance with influential rankings and reporting
+      - domain: cnbc.com
+        priority: 6
+        categories: [business, markets, AI]
+        description: Real-time AI business news, market coverage and financial analysis
+      - domain: theguardian.com
+        priority: 6
+        categories: [policy, society, AI]
+        description: AI coverage, technology policy, regulation and society impact
