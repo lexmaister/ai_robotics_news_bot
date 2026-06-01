@@ -1,0 +1,98 @@
+# =============================================================================
+# AI & Robotics News Curation Bot — Settings
+# =============================================================================
+# Secrets (API keys, tokens) live in .env, not here.
+#
+# --- FREE PLAN CONSTRAINTS (newsdata.io) ---
+# • 200 credits/day (1 credit = 1 API request)
+# • Rate limit: max 30 requests per 15-minute window
+# • Max 10 results per request (size=10)
+# • Timeframe limited to last 48 hours
+#
+# --- BUDGET MATH ---
+# 200 credits ÷ 7 sessions/day ≈ 28.6 credits/session → we use 30 per session.
+# Last session of the day gets only the remaining credits (~20), which is fine
+# since the DB already captured most articles by then.
+#
+# --- SESSION STRUCTURE ---
+# Each session: 5 domains × 6 queries = 30 requests (= 30 credits).
+# 5 domains are randomly sampled from the full 25-source whitelist each run.
+# This provides source diversity across the day while staying within rate limits.
+# Deduplication of articles is handled at DB level (pgvector upsert on link hash).
+# =============================================================================
+
+# --------------------------------------------------------------------------- #
+# Orchestration (Prefect scheduler)
+# --------------------------------------------------------------------------- #
+orchestration:
+  runs_per_day: 7                       # 24h ÷ 7 = ~3h 26min between runs
+  # Chosen so that 7 × 30 = 210 ≈ 200 daily credits (slight overshoot is OK;
+  # the last session simply gets fewer credits remaining).
+
+# --------------------------------------------------------------------------- #
+# Session — one gathering run
+# --------------------------------------------------------------------------- #
+session:
+  credits: 30                           # requests per session; equals rate-limit ceiling (30/15min)
+  domains_per_session: 5                # randomly sample 5 domains from 25 each run
+  # 5 domains × 6 queries = 30 requests → exactly fills the rate-limit window.
+
+# --------------------------------------------------------------------------- #
+# NewsData.io API parameters
+# --------------------------------------------------------------------------- #
+newsdata:
+  language: "en"
+  timeframe: 4                          # hours lookback per request
+  # gap between runs is ~3.4h (24÷7); using 4h adds overlap to prevent
+  # missed articles due to indexing delays. DB dedup handles any overlap.
+  size: 10                              # results per request (free plan maximum)
+  removeduplicate: true                 # API-level dedup within a single response
+  sort: "pubDate"                       # newest first — prioritises fresh content
+  excludefield:                         # drop heavy/unused fields to reduce payload
+    - image_url
+    - video_url
+    - source_icon
+  query_field_mode: "random"            # randomly pick "q" (full-text) or "qInTitle" per request
+  # "q" casts a wide net; "qInTitle" is more precise. Alternating
+  # gives a mix of recall and precision without doubling credit spend.
+
+# --------------------------------------------------------------------------- #
+# Queries — 6 broad topics (max 512 chars each per API constraint)
+# --------------------------------------------------------------------------- #
+# Strategy: queries are intentionally broad and inclusive because the domain
+# whitelist already constrains results to high-quality sources. Broad queries
+# ensure we don't miss relevant articles that use unexpected terminology.
+# All 6 queries run against every sampled domain each session.
+# --------------------------------------------------------------------------- #
+queries:
+  - name: "robotics"
+    q: "robot OR robotics OR humanoid OR bipedal OR quadruped OR manipulator OR cobot OR surgical robot OR warehouse robot OR autonomous robot OR swarm OR embodied AI"
+
+  - name: "autonomous_systems"
+    q: "autonomous OR self-driving OR unmanned OR drone OR UAV OR UGV OR autonomous vehicle OR ADAS OR computer vision OR lidar OR sensor fusion OR path planning"
+
+  - name: "ai_models_agents"
+    q: "artificial intelligence OR LLM OR GPT OR foundation model OR transformer OR AI agent OR agentic OR multi-agent OR reasoning OR neural network OR deep learning OR machine learning"
+
+  - name: "generative_ai_research"
+    q: "generative AI OR diffusion model OR text-to-image OR multimodal OR AI research OR reinforcement learning OR fine-tuning OR open source AI OR AI benchmark OR RLHF OR synthetic data"
+
+  - name: "ai_industry_hardware"
+    q: "AI chip OR GPU OR TPU OR neuromorphic OR semiconductor OR edge AI OR AI startup OR enterprise AI OR AI deployment OR AI funding OR smart factory OR Industry 4.0 OR automation"
+
+  - name: "ai_policy_science"
+    q: "AI regulation OR AI safety OR AI ethics OR AI governance OR AI biology OR drug discovery OR protein folding OR computational science OR AI risk OR alignment OR superintelligence"
+
+# --------------------------------------------------------------------------- #
+# Sources whitelist
+# --------------------------------------------------------------------------- #
+whitelist_path: "config/sources_whitelist.yml"
+
+# --------------------------------------------------------------------------- #
+# Design Notes
+# --------------------------------------------------------------------------- #
+# • No rotation state needed — random sampling from full whitelist each session.
+# • Deduplication handled at DB level (pgvector upsert on article link/hash).
+# • Theoretical max yield: 30 requests × 10 articles = 300 articles/session,
+#   but real yield is lower due to overlap, dedup, and source availability.
+# • If upgrading to a paid plan, increase: credits, domains_per_session, size.
