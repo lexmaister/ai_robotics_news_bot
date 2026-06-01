@@ -91,6 +91,7 @@ services:
   # WORKER PROFILE
   # ═══════════════════════════════════════════════════════════════
   worker:
+    profiles: [worker]
     build:
       context: .
       dockerfile: Dockerfile
