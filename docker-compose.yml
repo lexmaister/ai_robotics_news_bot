@@ -91,10 +91,10 @@ services:
   # WORKER PROFILE
   # ═══════════════════════════════════════════════════════════════
   worker:
-    profiles: [worker]
     build:
       context: .
       dockerfile: Dockerfile
+    profiles: [worker]
     container_name: news_worker
     command: prefect worker start --pool default-agent-pool --type process
     environment:
@@ -114,13 +114,6 @@ services:
       - ./config:/app/config:ro
       - ./src:/app/src
       - ./flows:/app/flows
-    depends_on:
-      prefect-server:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     restart: unless-stopped
 
 volumes:
