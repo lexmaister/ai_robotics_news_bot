@@ -20,7 +20,8 @@ RUN pip install --no-cache-dir \
     tiktoken \
     python-dotenv \
     pydantic \
-    pydantic-settings
+    pydantic-settings \
+    newsdataapi
 
 # Copy project source code
 COPY src/ ./src/
