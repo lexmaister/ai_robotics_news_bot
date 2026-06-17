@@ -1,14 +1,14 @@
 """
 flows/daily_news_flow.py
 
-Production flow entrypoint (config smoke test stage).
+Production Prefect flow for daily AI/Robotics news ingestion.
 
-This flow verifies that:
-- EnvSettings are present (paths + secrets injected by docker-compose/Prefect).
-- settings.yml parses and validates (including query length <= 100).
-- sources_whitelist.yml parses into groups -> domains.
-
-It intentionally stops before ingestion to allow safe validation in Prefect runs.
+Stages:
+1) Load EnvSettings (paths + API key) injected via docker-compose / Prefect worker env.
+2) Load/validate settings.yml (includes NewsData query-length guard <= 100).
+3) Load whitelist groups/domains from sources_whitelist.yml.
+4) Run ingestion via src.ingestion.run_ingestion(...).
+5) Return a JSON-serializable payload (for later downstream tasks).
 """
 
 from __future__ import annotations
@@ -16,28 +16,27 @@ from __future__ import annotations
 from prefect import flow, get_run_logger
 
 from src.config import EnvSettings, load_settings, load_whitelist
+from src.ingestion import run_ingestion
 
 
 @flow(name="daily-news-flow")
 def daily_news_flow() -> dict:
     """
-    Load and validate runtime config.
+    Main production flow entrypoint.
 
-    Returns a JSON-serializable dict so Prefect UI can display it and downstream
-    tasks can consume it later (when ingestion is enabled).
+    Returns:
+        dict: JSON-serializable run payload (safe to store as artifact / pass to tasks).
     """
     log = get_run_logger()
 
-    # 1) Load env configuration injected by docker-compose / Prefect worker env
+    # ----------------------------
+    # 1) Load env + config
+    # ----------------------------
     env = EnvSettings()
 
-    # 2) Load and validate settings.yml (includes validate_queries_len strict check)
-    settings = load_settings(env)
+    settings = load_settings(env)      # validates YAML + query length constraint
+    whitelist = load_whitelist(env)    # groups -> list[domains]
 
-    # 3) Load whitelist groups/domains
-    whitelist = load_whitelist(env)
-
-    # 4) Log a compact summary (this is what you want to see in Prefect UI)
     group_names = sorted(whitelist.keys())
     domains_total = sum(len(whitelist[g]) for g in group_names)
 
@@ -66,33 +65,71 @@ def daily_news_flow() -> dict:
         {g: len(whitelist[g]) for g in group_names},
     )
 
-    # Stop here on purpose: no ingestion yet
+    # ----------------------------
+    # 2) Run ingestion
+    # ----------------------------
+    result = run_ingestion(
+        settings=settings,
+        whitelist_groups=whitelist,
+        last_news_path=env.last_news_path,
+        newsdata_api_key=env.newsdata_api_key.get_secret_value(),
+    )
+
+    log.info(
+        "Ingestion result: status=%s group=%s requests=%s sampled_domains=%s articles=%s collected_dt=%s",
+        result.status,
+        result.active_group,
+        result.requests_planned,
+        result.sampled_domains,
+        result.articles_collected,
+        result.collected_dt,
+    )
+
+    # Policy: treat "no_plan" as a non-fatal condition (Completed run with warning).
+    # If you prefer failing the run for alerting, replace with: raise RuntimeError(...)
+    if result.status == "no_plan":
+        log.warning(
+            "No plan created (no API calls). Check whitelist group domains: group=%s",
+            result.active_group,
+        )
+
     return {
-        "ok": True,
-        "paths": {
-            "settings_path": str(env.settings_path),
-            "sources_whitelist_path": str(env.sources_whitelist_path),
-            "prompts_dir": str(env.prompts_dir),
-            "last_news_path": str(env.last_news_path),
-        },
-        "settings": {
-            "credits": settings.session.credits,
-            "domains_per_session": settings.session.domains_per_session,
-            "newsdata": {
-                "language": settings.newsdata.language,
-                "timeframe": settings.newsdata.timeframe,
-                "size": settings.newsdata.size,
-                "removeduplicate": settings.newsdata.removeduplicate,
-                "query_field_mode": settings.newsdata.query_field_mode,
-                "excludefield": settings.newsdata.excludefield,
+        "config": {
+            "paths": {
+                "settings_path": str(env.settings_path),
+                "sources_whitelist_path": str(env.sources_whitelist_path),
+                "prompts_dir": str(env.prompts_dir),
+                "last_news_path": str(env.last_news_path),
             },
-            "queries_count": len(settings.queries),
-            "query_names": [q.name for q in settings.queries],
+            "settings": {
+                "credits": settings.session.credits,
+                "domains_per_session": settings.session.domains_per_session,
+                "newsdata": {
+                    "language": settings.newsdata.language,
+                    "timeframe": settings.newsdata.timeframe,
+                    "size": settings.newsdata.size,
+                    "removeduplicate": settings.newsdata.removeduplicate,
+                    "query_field_mode": settings.newsdata.query_field_mode,
+                    "excludefield": settings.newsdata.excludefield,
+                },
+                "queries_count": len(settings.queries),
+                "query_names": [q.name for q in settings.queries],
+            },
+            "whitelist": {
+                "groups": group_names,
+                "domains_total": domains_total,
+                "group_sizes": {g: len(whitelist[g]) for g in group_names},
+            },
         },
-        "whitelist": {
-            "groups": group_names,
-            "domains_total": domains_total,
-            "group_sizes": {g: len(whitelist[g]) for g in group_names},
+        "ingestion": {
+            "status": result.status,
+            "active_group": result.active_group,
+            "requests_planned": result.requests_planned,
+            "sampled_domains": result.sampled_domains,
+            "articles_collected": result.articles_collected,
+            "collected_dt": result.collected_dt,
+            "plan": result.plan,
+            "articles": result.articles,
         },
     }
 
