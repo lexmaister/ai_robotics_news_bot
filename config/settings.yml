@@ -42,12 +42,8 @@ session:
 # --------------------------------------------------------------------------- #
 newsdata:
   language: "en"
-  timeframe: 4                          # hours lookback per request
-  # gap between runs is ~3.4h (24÷7); using 4h adds overlap to prevent
-  # missed articles due to indexing delays. DB dedup handles any overlap.
   size: 10                              # results per request (free plan maximum)
   removeduplicate: true                 # API-level dedup within a single response
-  sort: "pubDate"                       # newest first — prioritises fresh content
   excludefield:                         # drop heavy/unused fields to reduce payload
     - image_url
     - video_url
@@ -57,7 +53,7 @@ newsdata:
   # gives a mix of recall and precision without doubling credit spend.
 
 # --------------------------------------------------------------------------- #
-# Queries — 6 broad topics (max 512 chars each per API constraint)
+# Queries — 6 broad topics (max 100 chars each per API constraint)
 # --------------------------------------------------------------------------- #
 # Strategy: queries are intentionally broad and inclusive because the domain
 # whitelist already constrains results to high-quality sources. Broad queries
@@ -66,27 +62,28 @@ newsdata:
 # --------------------------------------------------------------------------- #
 queries:
   - name: "robotics"
-    q: "robot OR robotics OR humanoid OR bipedal OR quadruped OR manipulator OR cobot OR surgical robot OR warehouse robot OR autonomous robot OR swarm OR embodied AI"
+    q: "robot OR robotics OR humanoid OR bipedal OR quadruped OR cobot OR swarm"
+    # Length: 74 chars
 
   - name: "autonomous_systems"
-    q: "autonomous OR self-driving OR unmanned OR drone OR UAV OR UGV OR autonomous vehicle OR ADAS OR computer vision OR lidar OR sensor fusion OR path planning"
+    q: "autonomous OR self-driving OR drone OR UAV OR UGV OR lidar OR sensor fusion"
+    # Length: 77 chars
 
   - name: "ai_models_agents"
-    q: "artificial intelligence OR LLM OR GPT OR foundation model OR transformer OR AI agent OR agentic OR multi-agent OR reasoning OR neural network OR deep learning OR machine learning"
+    q: "artificial intelligence OR LLM OR GPT OR transformer OR AI agent OR neural network"
+    # Length: 84 chars
 
   - name: "generative_ai_research"
-    q: "generative AI OR diffusion model OR text-to-image OR multimodal OR AI research OR reinforcement learning OR fine-tuning OR open source AI OR AI benchmark OR RLHF OR synthetic data"
+    q: "generative AI OR diffusion model OR multimodal OR AI research OR fine-tuning OR RLHF"
+    # Length: 86 chars
 
   - name: "ai_industry_hardware"
-    q: "AI chip OR GPU OR TPU OR neuromorphic OR semiconductor OR edge AI OR AI startup OR enterprise AI OR AI deployment OR AI funding OR smart factory OR Industry 4.0 OR automation"
+    q: "AI chip OR GPU OR TPU OR neuromorphic OR edge AI OR AI startup OR enterprise AI"
+    # Length: 81 chars
 
   - name: "ai_policy_science"
-    q: "AI regulation OR AI safety OR AI ethics OR AI governance OR AI biology OR drug discovery OR protein folding OR computational science OR AI risk OR alignment OR superintelligence"
-
-# --------------------------------------------------------------------------- #
-# Sources whitelist
-# --------------------------------------------------------------------------- #
-whitelist_path: "config/sources_whitelist.yml"
+    q: "AI regulation OR AI safety OR AI ethics OR AI governance OR AI risk OR alignment"
+    # Length: 82 chars
 
 # --------------------------------------------------------------------------- #
 # Design Notes

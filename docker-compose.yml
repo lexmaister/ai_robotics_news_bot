@@ -109,11 +109,18 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID}
       NEWSDATA_API_KEY: ${NEWSDATA_API_KEY}
+      CONFIG_DIR: /app/config
+      DATA_DIR: /app/data
+      SETTINGS_PATH: /app/config/settings.yml
+      SOURCES_WHITELIST_PATH: /app/config/sources_whitelist.yml
+      LAST_NEWS_PATH: /app/data/last_news.json
+      PROMPTS_DIR: /app/config/prompts
     # overwrite Dockerfile's settings for developing
     volumes:
       - ./config:/app/config:ro
       - ./src:/app/src
       - ./flows:/app/flows
+      - ./data:/app/data
     restart: unless-stopped
 
 volumes:
