@@ -64,7 +64,7 @@ groups:
         priority: 8
         categories: [AI, science, culture]
         description: Long-form technology and science analysis, ideas for a world in transformation
-      - domain: tomshardware.com
+      - domain: tomshardware.fr
         priority: 7
         categories: [hardware, AI, benchmarks]
         description: Hardware and AI industry reporting, technical reviews and benchmarks

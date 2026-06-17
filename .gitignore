@@ -1,3 +1,4 @@
 .env
 **/sandbox/
 __pycache__
+data/last_news.json
