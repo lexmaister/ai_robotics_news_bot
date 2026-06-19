@@ -8,15 +8,74 @@ Stages:
 2) Load/validate settings.yml (includes NewsData query-length guard <= 100).
 3) Load whitelist groups/domains from sources_whitelist.yml.
 4) Run ingestion via src.ingestion.run_ingestion(...).
-5) Return a JSON-serializable payload (for later downstream tasks).
+5) Insert articles into Postgres newsbot DB (skip duplicates via UNIQUE constraints).
+6) Return a JSON-serializable payload (for later downstream tasks).
 """
 
 from __future__ import annotations
 
-from prefect import flow, get_run_logger
+import os
+
+from prefect import flow, get_run_logger, task
 
 from src.config import EnvSettings, load_settings, load_whitelist
 from src.ingestion import run_ingestion
+from src.db import DbConfig, connect, insert_or_skip_article
+
+
+@task(name="task3-insert-to-db")
+def insert_to_db_task(articles: list[dict], collected_dt: str) -> dict:
+    """
+    Task 3: Insert ingested articles into newsbot DB.
+
+    Behavior:
+    - Iterate articles one-by-one.
+    - Try INSERT ... ON CONFLICT DO NOTHING (duplicates in JSON or DB are skipped).
+    - Return counts + inserted ids (useful for later categorization step).
+
+    Further development (logic description only):
+    - Add Task 4: categorize only inserted_ids and update category.
+    - Add publishing step: set publicated=true after posting to Telegram.
+    - Add embedding step: compute/store embedding only for publicated=true rows.
+    """
+    log = get_run_logger()
+
+    cfg = DbConfig(
+        host=os.environ["POSTGRES_HOST"],
+        port=int(os.environ.get("POSTGRES_PORT", "5432")),
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        dbname="newsbot",
+    )
+
+    inserted_ids: list[int] = []
+    skipped = 0
+
+    conn = connect(cfg)
+    try:
+        for a in articles:
+            inserted, article_id = insert_or_skip_article(
+                conn,
+                title=a.get("title"),
+                link=a.get("link"),
+                pub_date_raw=a.get("pubDate"),
+                request_domain=a.get("request_domain"),
+                request_query_name=a.get("request_query_name"),
+                request_query_field=a.get("request_query_field"),
+                collected_dt_raw=collected_dt,
+            )
+
+            if inserted and article_id is not None:
+                inserted_ids.append(article_id)
+            else:
+                skipped += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    log.info("DB insert complete: inserted=%s skipped=%s total=%s", len(inserted_ids), skipped, len(articles))
+    return {"inserted": len(inserted_ids), "skipped": skipped, "inserted_ids": inserted_ids}
 
 
 @flow(name="daily-news-flow")
@@ -30,7 +89,7 @@ def daily_news_flow() -> dict:
     log = get_run_logger()
 
     # ----------------------------
-    # 1) Load env + config
+    # Task 1) Load env + config
     # ----------------------------
     env = EnvSettings()
 
@@ -66,7 +125,7 @@ def daily_news_flow() -> dict:
     )
 
     # ----------------------------
-    # 2) Run ingestion
+    # Task 2) Run ingestion
     # ----------------------------
     result = run_ingestion(
         settings=settings,
@@ -92,6 +151,11 @@ def daily_news_flow() -> dict:
             "No plan created (no API calls). Check whitelist group domains: group=%s",
             result.active_group,
         )
+
+    # ----------------------------
+    # Task 3) Insert to DB
+    # ----------------------------
+    storage = insert_to_db_task(result.articles, result.collected_dt)
 
     return {
         "config": {
@@ -131,6 +195,7 @@ def daily_news_flow() -> dict:
             "plan": result.plan,
             "articles": result.articles,
         },
+        "storage": storage,
     }
 
 

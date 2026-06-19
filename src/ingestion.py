@@ -26,7 +26,7 @@ from pathlib import Path
 from random import Random
 from typing import Any, Literal, TypedDict
 
-from newsdataapi import NewsDataApiClient
+from newsdataapi import NewsDataApiClient, NewsdataRateLimitError
 
 from src.config import AppSettings  # single source of truth for settings types
 
@@ -232,33 +232,30 @@ class NewsDataManager:
 
         return plan[: self.settings.session.credits], len(sampled_domains)
 
-    @staticmethod
-    def normalize_article(article: dict[str, Any], meta: RequestMeta) -> dict[str, Any]:
-        """Normalize API result and attach request metadata for traceability."""
-        keys = [
-            "article_id",
-            "title",
-            "description",
-            "link",
-            "pubDate",
-            "source_id",
-            "source_name",
-            "category",
-            "country",
-            "language",
-            "keywords",
-            "creator",
+    def normalize_article(self, article: dict[str, Any], meta: RequestMeta) -> dict[str, Any]:
+        """Normalize API result and attach request metadata, respecting exclusions."""
+        excluded = set(self.settings.newsdata.excludefield)
+        
+        # Complete list of possible API fields
+        api_fields = [
+            "article_id", "title", "description", "link", "pubDate",
+            "source_id", "source_name", "category", "country", "language",
+            "keywords", "creator", "image_url", "video_url", "source_icon"
         ]
-        return {
-            **{k: article.get(k) for k in keys},
-            "request_group": meta["group"],
-            "request_domain": meta["domain"],
-            "request_query_name": meta["query_name"],
-            "request_query_field": meta["query_field"],
-        }
+        
+        # Extract only the API fields that are NOT in the excludefield list
+        keys_to_extract = [k for k in api_fields if k not in excluded]
+        normalized = {k: article.get(k) for k in keys_to_extract}
+        
+        # Attach internal metadata
+        normalized["request_domain"] = meta["domain"]
+        normalized["request_query_name"] = meta["query_name"]
+        normalized["request_query_field"] = meta["query_field"]
+            
+        return normalized
 
     def fetch_articles(self, plan: list[RequestMeta]) -> list[dict[str, Any]]:
-        """Execute the request plan (fail-fast on any request error)."""
+        """Execute the request plan (graceful stop on 429 Rate Limit, fail-fast on others)."""
         if not plan:
             return []
 
@@ -279,7 +276,20 @@ class NewsDataManager:
                     resp = client.latest_api(**meta["params"])
                     results = resp.get("results") or []
                     articles.extend(self.normalize_article(a, meta) for a in results)
+                    
+                except NewsdataRateLimitError as e:
+                    # Gracefully catch the 429 error (limit exceeded / out of credits)
+                    logger.warning(
+                        "NewsData API limit reached on request %s/%s. Stopping gracefully and saving %s collected articles. | retry_after=%s",
+                        i,
+                        total,
+                        len(articles),
+                        getattr(e, 'retry_after', 'unknown')
+                    )
+                    break  # Exit the loop, but DO NOT raise. Return what we have so far.
+                    
                 except Exception:
+                    # Fail-fast on unexpected errors (e.g., 500 Server Error, Network Error)
                     logger.exception(
                         "NewsData request failed | group=%s domain=%s query=%s field=%s",
                         meta["group"],

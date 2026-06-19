@@ -48,6 +48,13 @@ newsdata:
     - image_url
     - video_url
     - source_icon
+    - source_id
+    - source_name
+    - category
+    - country
+    - language
+    - keywords
+    - creator
   query_field_mode: "random"            # randomly pick "q" (full-text) or "qInTitle" per request
   # "q" casts a wide net; "qInTitle" is more precise. Alternating
   # gives a mix of recall and precision without doubling credit spend.
