@@ -34,7 +34,7 @@ ai_robotics_news_bot/
 │   ├── db.py                     # DB connection and queries
 │   ├── embeddings.py             # Embedding model calls
 │   ├── ingestion.py              # newsdata.io fetcher
-│   ├── curation.py               # LLM curation logic (OpenRouter)
+│   ├── curation.py               # LLM logic: categorization and curation(OpenRouter)
 │   ├── publisher.py              # Telegram posting
 │   └── analytics.py              # Metrics and reporting
 │
@@ -64,7 +64,7 @@ cp .env.example .env
 docker compose --profile server up -d
 ```
 
-This starts: PostgreSQL (with pgvector), Redis, Prefect API server (headless, no UI), Prefect background services.
+This starts: PostgreSQL (with pgvector), Redis, Prefect API server and Prefect background services.
 
 ### 3. Verify Prefect Server is running
 

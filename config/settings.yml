@@ -104,11 +104,9 @@ queries:
 # --------------------------------------------------------------------------- #
 # LLM Models (OpenRouter)
 # --------------------------------------------------------------------------- #
-models:
+llm:
   # Cheap/free model used for high-volume, low-stakes tasks (title categorization)
   categorization_model: "nvidia/nemotron-nano-9b-v2:free"
   # Higher-quality model used for final selection + summarization (curation)
   curation_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
-
-llm:
-  categorization_batch_size: 20
+  categorization_batch_size: 10

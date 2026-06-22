@@ -7,7 +7,11 @@ Stages (as Prefect tasks):
 1) Task 1: Load EnvSettings + load/validate YAML config + load whitelist.
 2) Task 2: Run ingestion via src.ingestion.run_ingestion(...).
 3) Task 3: Insert articles into Postgres newsbot DB (skip duplicates via UNIQUE constraints).
-4) Return a JSON-serializable payload (for later downstream tasks).
+4) Task 4: Categorize uncategorized titles backlog via OpenRouter (strict JSON) and update articles.category.
+
+Design notes:
+- No concurrency: we categorize from backlog with no locking.
+- Fail-fast: if the model output is invalid, Task 4 raises and the flow fails.
 """
 
 from __future__ import annotations
@@ -19,36 +23,42 @@ from prefect import flow, get_run_logger, task
 
 from src.config import EnvSettings, load_settings, load_whitelist
 from src.ingestion import run_ingestion
-from src.db import DbConfig, connect, insert_or_skip_article
+from src.db import DbConfig, connect, fetch_titles_for_categorization, insert_or_skip_article, update_category
+from src.curation import categorize_titles_via_openrouter
+
+
+def _db_config_from_env() -> DbConfig:
+    return DbConfig(
+        host=os.environ["POSTGRES_HOST"],
+        port=int(os.environ.get("POSTGRES_PORT", "5432")),
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        dbname="newsbot",
+    )
 
 
 @task(name="task1-load-config")
 def load_config_task() -> dict[str, Any]:
-    """
-    Task 1: load environment settings, settings.yml, and sources whitelist.
-
-    Returns a JSON-serializable dict that contains:
-    - env paths (as strings)
-    - settings summary needed downstream
-    - whitelist domains grouped
-    """
+    """Task 1: load environment settings, settings.yml, and sources whitelist."""
     log = get_run_logger()
 
     env = EnvSettings()
-    settings = load_settings(env)      # validates YAML + query length constraint
-    whitelist = load_whitelist(env)    # groups -> list[domains]
+    settings = load_settings(env)
+    whitelist = load_whitelist(env)
 
     group_names = sorted(whitelist.keys())
     domains_total = sum(len(whitelist[g]) for g in group_names)
 
     log.info("Config loaded successfully.")
     log.info(
-        "Paths: settings=%s whitelist=%s prompts_dir=%s last_news=%s",
+        "Paths: settings=%s whitelist=%s categorization_prompt=%s curation_prompt=%s last_news=%s",
         env.settings_path,
         env.sources_whitelist_path,
-        env.prompts_dir,
+        env.categorization_prompt_path,
+        env.curation_prompt_path,
         env.last_news_path,
     )
+
     log.info(
         "Settings: credits=%s domains_per_session=%s language=%s size=%s timeframe=%s query_field_mode=%s queries=%s",
         settings.session.credits,
@@ -59,6 +69,14 @@ def load_config_task() -> dict[str, Any]:
         settings.newsdata.query_field_mode,
         len(settings.queries),
     )
+
+    log.info(
+        "LLM: categorization_model=%s curation_model=%s categorization_batch_size=%s",
+        settings.llm.categorization_model,
+        settings.llm.curation_model,
+        settings.llm.categorization_batch_size,
+    )
+
     log.info(
         "Whitelist: groups=%s domains_total=%s group_sizes=%s",
         len(group_names),
@@ -66,19 +84,16 @@ def load_config_task() -> dict[str, Any]:
         {g: len(whitelist[g]) for g in group_names},
     )
 
-    # Return a serializable object. We pass back EnvSettings paths and raw objects
-    # are not guaranteed to be serializable, so we return summaries + keep settings/whitelist
-    # in-memory in the task result via a dict. (Prefect can often handle this, but this is safer.)
     return {
         "env": {
             "settings_path": str(env.settings_path),
             "sources_whitelist_path": str(env.sources_whitelist_path),
-            "prompts_dir": str(env.prompts_dir),
+            "categorization_prompt_path": str(env.categorization_prompt_path),
+            "curation_prompt_path": str(env.curation_prompt_path),
             "last_news_path": str(env.last_news_path),
-            # We do NOT return secrets.
         },
-        "settings_obj": settings,    # used internally by downstream task (Prefect will pass object in-process)
-        "whitelist_obj": whitelist,  # used internally by downstream task
+        "settings_obj": settings,
+        "whitelist_obj": whitelist,
         "summary": {
             "group_names": group_names,
             "domains_total": domains_total,
@@ -91,17 +106,13 @@ def load_config_task() -> dict[str, Any]:
 
 @task(name="task2-run-ingestion")
 def run_ingestion_task(cfg: dict[str, Any]) -> dict[str, Any]:
-    """
-    Task 2: run ingestion and return a JSON-serializable dict.
-    """
+    """Task 2: run ingestion."""
     log = get_run_logger()
 
     settings = cfg["settings_obj"]
     whitelist = cfg["whitelist_obj"]
-    last_news_path = cfg["env"]["last_news_path"]
 
-    # EnvSettings holds the SecretStr; easiest is to reconstruct EnvSettings to read the secret.
-    # Further development: pass SecretStr through Prefect Blocks/Variables.
+    # Reconstruct EnvSettings to read secrets.
     env = EnvSettings()
 
     result = run_ingestion(
@@ -121,13 +132,6 @@ def run_ingestion_task(cfg: dict[str, Any]) -> dict[str, Any]:
         result.collected_dt,
     )
 
-    if result.status == "no_plan":
-        log.warning(
-            "No plan created (no API calls). Check whitelist group domains: group=%s",
-            result.active_group,
-        )
-
-    # Return serializable ingestion output
     return {
         "status": result.status,
         "active_group": result.active_group,
@@ -142,29 +146,10 @@ def run_ingestion_task(cfg: dict[str, Any]) -> dict[str, Any]:
 
 @task(name="task3-insert-to-db")
 def insert_to_db_task(articles: list[dict], collected_dt: str) -> dict:
-    """
-    Task 3: Insert ingested articles into newsbot DB.
-
-    Behavior:
-    - Iterate articles one-by-one.
-    - Try INSERT ... ON CONFLICT DO NOTHING (duplicates in JSON or DB are skipped).
-    - Return counts + inserted ids.
-
-    Further development (logic description only):
-    - Add Task 4: categorize only inserted_ids and update category.
-    - Add publishing step: set publicated=true after posting to Telegram.
-    - Add embedding step: compute/store embedding only for publicated=true rows.
-    """
+    """Task 3: Insert ingested articles into newsbot DB."""
     log = get_run_logger()
 
-    cfg = DbConfig(
-        host=os.environ["POSTGRES_HOST"],
-        port=int(os.environ.get("POSTGRES_PORT", "5432")),
-        user=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
-        dbname="newsbot",
-    )
-
+    cfg = _db_config_from_env()
     inserted_ids: list[int] = []
     skipped = 0
 
@@ -194,30 +179,81 @@ def insert_to_db_task(articles: list[dict], collected_dt: str) -> dict:
     return {"inserted": len(inserted_ids), "skipped": skipped, "inserted_ids": inserted_ids}
 
 
+@task(name="task4-categorize-backlog")
+def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Task 4: Categorize uncategorized titles from backlog and update articles.category."""
+    log = get_run_logger()
+
+    settings = cfg["settings_obj"]
+    env = EnvSettings()  # for secrets + prompt paths
+
+    batch_size = int(settings.llm.categorization_batch_size)
+    model = str(settings.llm.categorization_model)
+
+    db_cfg = _db_config_from_env()
+    conn = connect(db_cfg)
+
+    updated = 0
+    rounds = 0
+    max_rounds = 10  # safety cap per flow run
+
+    try:
+        while rounds < max_rounds:
+            rows = fetch_titles_for_categorization(conn, limit=batch_size)
+            if not rows:
+                break
+
+            titles = [r.title for r in rows]
+            ids = [r.id for r in rows]
+
+            result = categorize_titles_via_openrouter(
+                api_key=env.openrouter_api_key.get_secret_value(),
+                model=model,
+                template_path=env.categorization_prompt_path,
+                titles=titles,
+                temperature=0.0,
+            )
+
+            # Persist in the same order.
+            for article_id, cat in zip(ids, result.categories):
+                update_category(conn, article_id=article_id, category=cat)
+                updated += 1
+
+            conn.commit()
+            rounds += 1
+            log.info(
+                "Categorization batch complete: batch=%s updated_total=%s model=%s",
+                len(ids),
+                updated,
+                model,
+            )
+
+        log.info("Categorization done: updated=%s rounds=%s", updated, rounds)
+        return {"updated": updated, "rounds": rounds, "batch_size": batch_size, "model": model}
+
+    finally:
+        conn.close()
+
+
 @flow(name="daily-news-flow")
 def daily_news_flow() -> dict:
-    """
-    Main production flow entrypoint.
-    Returns:
-        dict: JSON-serializable run payload.
-    """
-    # Task 1
+    """Main production flow entrypoint."""
     cfg = load_config_task()
-
-    # Task 2
     ingestion = run_ingestion_task(cfg)
-
-    # Task 3
     storage = insert_to_db_task(ingestion["articles"], ingestion["collected_dt"])
+    categorization = categorize_backlog_task(cfg)
 
-    # Keep your previous response structure, but now fully task-driven
     return {
         "config": {
             "paths": cfg["env"],
             "settings": {
-                # keep the same public summary as before
                 "credits": cfg["settings_obj"].session.credits,
                 "domains_per_session": cfg["settings_obj"].session.domains_per_session,
+                "llm": {
+                    "categorization_model": cfg["settings_obj"].llm.categorization_model,
+                    "curation_model": cfg["settings_obj"].llm.curation_model,
+                    "categorization_batch_size": cfg["settings_obj"].llm.categorization_batch_size,
+                },
                 "newsdata": {
                     "language": cfg["settings_obj"].newsdata.language,
                     "timeframe": cfg["settings_obj"].newsdata.timeframe,
@@ -237,8 +273,10 @@ def daily_news_flow() -> dict:
         },
         "ingestion": ingestion,
         "storage": storage,
+        "categorization": categorization,
     }
 
 
 if __name__ == "__main__":
     daily_news_flow()
+

@@ -41,8 +41,9 @@ class EnvSettings(BaseSettings):
 
     settings_path: Path
     sources_whitelist_path: Path
-    prompts_dir: Path
     last_news_path: Path
+    categorization_prompt_path: Path
+    curation_prompt_path: Path
     newsdata_api_key: SecretStr
     openrouter_api_key: SecretStr
 
@@ -193,15 +194,3 @@ def load_whitelist(env: EnvSettings) -> dict[str, list[str]]:
 
     return groups
 
-
-def build_ingestion_args(env: EnvSettings) -> dict[str, Any]:
-    """
-    Convenience helper for Prefect flows:
-    converts EnvSettings into args for src.ingestion.run_ingestion(...).
-    """
-    return {
-        "settings_path": env.settings_path,
-        "sources_whitelist_path": env.sources_whitelist_path,
-        "last_news_path": env.last_news_path,
-        "newsdata_api_key": env.newsdata_api_key.get_secret_value(),
-    }
