@@ -100,3 +100,15 @@ queries:
 # • Theoretical max yield: 30 requests × 10 articles = 300 articles/session,
 #   but real yield is lower due to overlap, dedup, and source availability.
 # • If upgrading to a paid plan, increase: credits, domains_per_session, size.
+
+# --------------------------------------------------------------------------- #
+# LLM Models (OpenRouter)
+# --------------------------------------------------------------------------- #
+models:
+  # Cheap/free model used for high-volume, low-stakes tasks (title categorization)
+  categorization_model: "nvidia/nemotron-nano-9b-v2:free"
+  # Higher-quality model used for final selection + summarization (curation)
+  curation_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+llm:
+  categorization_batch_size: 20

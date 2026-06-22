@@ -44,6 +44,7 @@ class EnvSettings(BaseSettings):
     prompts_dir: Path
     last_news_path: Path
     newsdata_api_key: SecretStr
+    openrouter_api_key: SecretStr
 
 
 # ----------------------------
@@ -57,14 +58,20 @@ class SessionSettings(BaseModel):
 
 
 class NewsDataSettings(BaseModel):
-    """
-    NewsData.io parameters used by ingestion."""
+    """NewsData.io parameters used by ingestion."""
     language: str
     timeframe: int | None = Field(default=None, gt=0)
     size: int = Field(gt=0)
     removeduplicate: int | bool = 1
     query_field_mode: Literal["q", "qInTitle", "random"] = "random"
     excludefield: list[str] = Field(default_factory=list)
+
+
+class LLMSettings(BaseModel):
+    """LLM parameters used for titles categorisation and curation."""
+    categorization_model: str
+    curation_model: str
+    categorization_batch_size: int = Field(gt=0)
 
 
 class QuerySettings(BaseModel):
@@ -85,6 +92,7 @@ class AppSettings(BaseModel):
     session: SessionSettings
     newsdata: NewsDataSettings
     queries: list[QuerySettings]
+    llm: LLMSettings
 
 
 # ----------------------------
