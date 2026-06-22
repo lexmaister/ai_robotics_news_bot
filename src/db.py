@@ -15,6 +15,11 @@ Table: articles
 - category (LLM)
 - publicated (bool)
 - embedding (pgvector) -- only set when publicated = True
+
+New in Phase 2/3:
+- Fetch batches of uncategorized titles for LLM categorization.
+
+NOTE: This module is intentionally synchronous (psycopg2) and simple.
 """
 
 from __future__ import annotations
@@ -35,6 +40,14 @@ class DbConfig:
     user: str
     password: str
     dbname: str = "newsbot"
+
+
+@dataclass(frozen=True)
+class ArticleTitle:
+    """Minimal payload for title categorization."""
+
+    id: int
+    title: str
 
 
 def connect(cfg: DbConfig) -> PgConnection:
@@ -130,6 +143,16 @@ WHERE id = %(id)s
   AND publicated = TRUE;
 """
 
+# Titles needing categorization (category is NULL).
+# We do not filter on publicated here; typically publicated rows will already have a category.
+SELECT_TITLES_FOR_CATEGORIZATION_SQL = """
+SELECT id, title
+FROM articles
+WHERE category IS NULL
+ORDER BY collected_dt DESC, id DESC
+LIMIT %(limit)s;
+"""
+
 
 def insert_or_skip_article(
     conn: PgConnection,
@@ -170,7 +193,6 @@ def insert_or_skip_article(
         "collected_dt": collected_dt,
     }
 
-    # DictCursor is optional; normal cursor is fine.
     with conn.cursor() as cur:
         cur.execute(INSERT_ARTICLE_SQL, params)
         row = cur.fetchone()
@@ -181,6 +203,33 @@ def insert_or_skip_article(
         cur.execute(SELECT_ID_BY_LINK_SQL, {"link": link})
         row2 = cur.fetchone()
         return False, (int(row2[0]) if row2 else None)
+
+
+def fetch_titles_for_categorization(conn: PgConnection, *, limit: int) -> list[ArticleTitle]:
+    """
+    Fetch a batch of uncategorized article titles.
+
+    The caller should pass:
+      limit = settings.llm.categorization_batch_size
+
+    Returns a list of (id, title) in the order they should be sent to the model.
+
+    Further development:
+    - Add a "locked_by/locked_dt" mechanism if you run multiple workers concurrently.
+    - Add optional time window filters (e.g., last N days).
+    """
+    if limit <= 0:
+        raise ValueError("limit must be > 0")
+
+    with conn.cursor() as cur:
+        cur.execute(SELECT_TITLES_FOR_CATEGORIZATION_SQL, {"limit": limit})
+        rows = cur.fetchall() or []
+
+    out: list[ArticleTitle] = []
+    for row in rows:
+        article_id, title = int(row[0]), str(row[1])
+        out.append(ArticleTitle(id=article_id, title=title))
+    return out
 
 
 def update_category(conn: PgConnection, *, article_id: int, category: str) -> None:
