@@ -47,6 +47,20 @@ ai_robotics_news_bot/
 
 ---
 
+## API Budget & Ingestion Strategy
+
+To operate entirely on the **Newsdata.io Free Tier** (200 credits/day), the bot uses a strict sampling and scheduling strategy:
+* **7 Sessions per Day:** Orchestrated by Prefect, running approximately every 3.5 hours.
+* **30 Requests per Session:** In each session, the bot randomly samples 5 domains from the whitelist and runs 6 broad topic queries against them (5 × 6 = 30 credits). 
+* **State Management:** The exact state of the last fetch is saved locally in `data/last_news.json` so the pipeline can gracefully resume without fetching duplicate pages.
+* **Database Deduplication:** Handled safely via PostgreSQL `UNIQUE` constraints and `ON CONFLICT` skips.
+
+## LLM Processing Pipeline
+
+The bot uses OpenRouter to dynamically route prompts to the most cost-effective models for specific tasks:
+1. **Categorization (High Volume):** Uses a fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) to process large batches of raw incoming titles. It forces strict JSON adherence to assign metadata tags (e.g., "AI Policy", "Robotics Market").
+2. **Curation & Summarization (Low Volume):** Uses a heavier, frontier-class model (e.g., `mistral-large-latest` or `nemotron-3-ultra-550b`) to evaluate the categorized backlog, select the absolute best stories, and generate the final Telegram broadcast.
+
 ## Quick Start
 
 ### 1. Clone and configure
@@ -153,8 +167,6 @@ POSTGRES_PASSWORD=your_secure_password
 # External APIs
 NEWSDATA_API_KEY=pub_xxxxxxxxxxxxx
 OPENROUTER_API_KEY=sk-or-xxxxxxxxxxxxx
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-CURATION_MODEL=mistralai/mistral-large-latest
 
 # Telegram
 TELEGRAM_BOT_TOKEN=123456:ABC-xxxxxxxxxxxxx
@@ -212,6 +224,33 @@ docker compose logs -f worker
 docker compose logs -f prefect-server
 ```
 
+### Database Insights & Statistics
+
+Use these quick commands to check the health and progress of your ingestion and curation pipelines without leaving the terminal.
+
+**Check Overall Pipeline Progress**
+See how many articles are pending publication versus already published:
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT publicated as is_published, COUNT(*) as article_count FROM articles GROUP BY publicated;"
+```
+
+**Check Categorization Statistics**
+View the distribution of articles across AI and Robotics categories, including how many are currently sitting in the backlog as `Uncategorized` (NULL):
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT COALESCE(category, 'Uncategorized (Pending)') as category_name, COUNT(*) as total FROM articles GROUP BY category ORDER BY total DESC;"
+```
+
+**Monitor Today's Ingestion Volume**
+Verify how many new articles the Newsdata.io fetcher has successfully ingested in the last 24 hours:
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT COUNT(*) as ingested_last_24h FROM articles WHERE collected_dt >= NOW() - INTERVAL '1 day';"
+```
+
+**View the 3 Most Recently Published Articles**
+Quickly check the latest articles that were sent to the Telegram channel:
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT title, pub_date FROM articles WHERE publicated = TRUE ORDER BY pub_date DESC LIMIT 3;"
+```
 ---
 
 ## Persistence and Backups
