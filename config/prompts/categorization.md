@@ -59,19 +59,29 @@ If **none** of the allowed categories fit, you may create a **new** category, bu
 - If the title is about stock moves, earnings, macro impacts, valuations, or markets: choose **Markets**.
 
 ## Output format (MUST FOLLOW EXACTLY)
-You MUST output **only** a valid JSON value and nothing else.
 
-Return a JSON array with the **same length and same order** as the input titles.
+You MUST output ONLY a valid JSON array of strings, and NOTHING ELSE.
 
-Each element MUST be a single category string, like:
+### CRITICAL MAPPING RULES
+- The input is a JSON array of titles with length N.
+- You MUST output a JSON array of categories with length N.
+- Output element at index i corresponds to the input title at index i.
+- Do NOT skip any title. Do NOT merge titles. Do NOT add extra items.
 
-["GenAI Research", "Humanoid Robots", ...]
+### CATEGORY STRING RULES (apply to every element)
+- Must be exactly 1–2 words.
+- Letters and a single space only. No punctuation. No slashes. No hyphens. No digits.
+- Casing:
+  - Words must be Title Case (e.g., "Chip", "Policy"), OR
+  - ALL CAPS acronyms are allowed as a word (e.g., "AI", "GPU", "UAV").
+  - Mixed-case company-style tokens are forbidden in NEW categories (e.g., "OpenAI", "DeepMind", "NVIDIA").
+- "Other" is forbidden.
 
-### Hard constraints
-- Output **only JSON**. No markdown. No explanations. No code fences.
-- Do **not** include keys, objects, or extra fields.
-- Do **not** output trailing commas.
-- Do **not** output any text before or after the JSON.
+### STRICT OUTPUT RULES
+- Output only JSON. No markdown. No explanations. No code fences.
+- Do not output objects, keys, or extra fields—only a JSON array of strings.
+- Do not output trailing commas.
+- Do not output any text before or after the JSON.
 
 ## Few-shot examples
 

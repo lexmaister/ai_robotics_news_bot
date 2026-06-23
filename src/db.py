@@ -210,7 +210,7 @@ def fetch_titles_for_categorization(conn: PgConnection, *, limit: int) -> list[A
     Fetch a batch of uncategorized article titles.
 
     The caller should pass:
-      limit = settings.llm.categorization_batch_size
+      limit = settings.llm.categorization.batch_size
 
     Returns a list of (id, title) in the order they should be sent to the model.
 

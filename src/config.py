@@ -68,11 +68,21 @@ class NewsDataSettings(BaseModel):
     excludefield: list[str] = Field(default_factory=list)
 
 
+class CategorizationSettings(BaseModel):
+    """Operational knobs for categorization task."""
+    batch_size: int = Field(gt=0)
+    max_total_rounds: int = Field(gt=0)
+    min_chunk_size: int = Field(gt=0)
+    poison_mode: Literal["fail", "mark"] = "mark"
+    poison_fallback_category: str = "Unrecognized"
+
+
 class LLMSettings(BaseModel):
-    """LLM parameters used for titles categorisation and curation."""
+    """LLM parameters used for titles categorization and curation."""
     categorization_model: str
     curation_model: str
-    categorization_batch_size: int = Field(gt=0)
+
+    categorization: CategorizationSettings
 
 
 class QuerySettings(BaseModel):

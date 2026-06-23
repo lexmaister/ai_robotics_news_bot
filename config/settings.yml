@@ -109,4 +109,29 @@ llm:
   categorization_model: "nvidia/nemotron-nano-9b-v2:free"
   # Higher-quality model used for final selection + summarization (curation)
   curation_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
-  categorization_batch_size: 10
+  # ------------------------------------------------------------------------- #
+  # Task 4: Categorize backlog (uncategorized titles) — operational knobs
+  #
+  # The backlog size is unknown. Task4 loops until no uncategorized titles remain,
+  # but needs safety valves and failure behavior controls to avoid infinite loops
+  # and to handle "poison pill" titles that repeatedly cause invalid LLM output.
+  #
+  # How it works:
+  # - Fetch up to batch_size titles from DB.
+  # - Call LLM to return a JSON array of N categories (N == number of titles).
+  # - If validation fails, Task4 splits the chunk into smaller chunks until it
+  #   isolates the problematic title(s).
+  #
+  # poison_mode:
+  # - "fail": raise and fail the flow if a single title cannot be categorized.
+  # - "mark": set that title's category to poison_fallback_category and continue.
+  #
+  # NOTE: poison_fallback_category must be a valid DB value. If you want a marker
+  # that is "invalid" for downstream logic, treat it as a reserved category in code.
+  # ------------------------------------------------------------------------- #
+  categorization:
+    batch_size: 10                   # number of uncategorized article titles to send to the LLM per iteration
+    max_total_rounds: 50             # hard cap on total LLM attempts per flow run
+    min_chunk_size: 1                # smallest chunk size during split retries
+    poison_mode: "mark"              # "fail" | "mark"
+    poison_fallback_category: "Unrecognized"

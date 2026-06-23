@@ -24,7 +24,7 @@ from prefect import flow, get_run_logger, task
 from src.config import EnvSettings, load_settings, load_whitelist
 from src.ingestion import run_ingestion
 from src.db import DbConfig, connect, fetch_titles_for_categorization, insert_or_skip_article, update_category
-from src.curation import categorize_titles_via_openrouter
+from src.curation import categorize_titles_via_openrouter, OpenAIError
 
 
 def _db_config_from_env() -> DbConfig:
@@ -71,10 +71,9 @@ def load_config_task() -> dict[str, Any]:
     )
 
     log.info(
-        "LLM: categorization_model=%s curation_model=%s categorization_batch_size=%s",
+        "LLM: categorization_model=%s curation_model=%s",
         settings.llm.categorization_model,
         settings.llm.curation_model,
-        settings.llm.categorization_batch_size,
     )
 
     log.info(
@@ -187,7 +186,13 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
     settings = cfg["settings_obj"]
     env = EnvSettings()  # for secrets + prompt paths
 
-    batch_size = int(settings.llm.categorization_batch_size)
+    cat_cfg = settings.llm.categorization
+    batch_size = int(cat_cfg.batch_size)
+    max_rounds = int(cat_cfg.max_total_rounds)
+    min_chunk_size = int(cat_cfg.min_chunk_size)
+    poison_mode = str(cat_cfg.poison_mode)  # "fail" | "mark"
+    poison_fallback = str(cat_cfg.poison_fallback_category)
+
     model = str(settings.llm.categorization_model)
 
     db_cfg = _db_config_from_env()
@@ -195,38 +200,80 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
 
     updated = 0
     rounds = 0
-    max_rounds = 10  # safety cap per flow run
+
+    def categorize_chunk(titles: list[str]) -> list[str]:
+        result = categorize_titles_via_openrouter(
+            api_key=env.openrouter_api_key.get_secret_value(),
+            model=model,
+            template_path=env.categorization_prompt_path,
+            titles=titles,
+            temperature=0.0,
+        )
+        return result.categories
 
     try:
         while rounds < max_rounds:
             rows = fetch_titles_for_categorization(conn, limit=batch_size)
             if not rows:
+                log.info("Backlog is empty. No more titles to categorize")
                 break
 
-            titles = [r.title for r in rows]
+            log.info("Fetched batch of %s uncategorized titles from database", len(rows))
+
             ids = [r.id for r in rows]
+            titles = [r.title for r in rows]
 
-            result = categorize_titles_via_openrouter(
-                api_key=env.openrouter_api_key.get_secret_value(),
-                model=model,
-                template_path=env.categorization_prompt_path,
-                titles=titles,
-                temperature=0.0,
-            )
+            chunk_size = len(titles)
+            i = 0
 
-            # Persist in the same order.
-            for article_id, cat in zip(ids, result.categories):
-                update_category(conn, article_id=article_id, category=cat)
-                updated += 1
+            while i < len(titles):
+                chunk_titles = titles[i : i + chunk_size]
+                chunk_ids = ids[i : i + chunk_size]
 
-            conn.commit()
-            rounds += 1
-            log.info(
-                "Categorization batch complete: batch=%s updated_total=%s model=%s",
-                len(ids),
-                updated,
-                model,
-            )
+                try:
+                    cats = categorize_chunk(chunk_titles)
+
+                    for article_id, cat in zip(chunk_ids, cats):
+                        update_category(conn, article_id=article_id, category=cat)
+                        updated += 1
+
+                    conn.commit()
+                    log.info("Successfully categorized %s articles. Total updated so far: %s", chunk_size, updated)
+                    i += chunk_size
+
+                except ValueError as exc:
+                    # PROCEED: Model responded, but output was invalid JSON or bad format.
+                    conn.rollback()
+                    log.warning("Validation failed: chunk_size=%s err=%s", chunk_size, str(exc))
+
+                    if chunk_size > min_chunk_size:
+                        # Halve the chunk to isolate the hallucination
+                        chunk_size = max(min_chunk_size, chunk_size // 2)
+                        continue
+
+                    # chunk_size == min_chunk_size: Isolate poison-pill title and proceed
+                    log.warning("Marking poison pill and proceeding: article_id=%s", chunk_ids[0])
+                    update_category(conn, article_id=chunk_ids[0], category=poison_fallback)
+                    conn.commit()
+                    updated += 1
+                    i += 1  # Move past the bad title
+
+                except OpenAIError as exc:
+                    # HALT: API is down, rate limited, or network failure.
+                    conn.rollback()
+                    log.error("Critical LLM API failure. Halting task. Error: %s", str(exc))
+                    raise  # Stop the flow
+
+                except Exception as exc:
+                    # HALT: Unexpected system bug or database disconnect.
+                    conn.rollback()
+                    log.error("Unexpected critical error. Halting task. Error: %s", str(exc))
+                    raise  # Stop the flow
+
+                finally:
+                    rounds += 1
+                    if rounds >= max_rounds:
+                        break
 
         log.info("Categorization done: updated=%s rounds=%s", updated, rounds)
         return {"updated": updated, "rounds": rounds, "batch_size": batch_size, "model": model}
@@ -252,7 +299,7 @@ def daily_news_flow() -> dict:
                 "llm": {
                     "categorization_model": cfg["settings_obj"].llm.categorization_model,
                     "curation_model": cfg["settings_obj"].llm.curation_model,
-                    "categorization_batch_size": cfg["settings_obj"].llm.categorization_batch_size,
+                    "batch_size": cfg["settings_obj"].llm.categorization.batch_size,
                 },
                 "newsdata": {
                     "language": cfg["settings_obj"].newsdata.language,

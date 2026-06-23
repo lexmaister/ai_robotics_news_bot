@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence
+from openai import OpenAI, OpenAIError
 
 
 # Keep this list in sync with config/prompts/categorization.md
@@ -74,10 +75,6 @@ def categorize_titles_via_openrouter(
 
 def _call_openrouter(*, api_key: str, model: str, prompt: str, temperature: float) -> str:
     """Call OpenRouter via the OpenAI-compatible SDK and return response text."""
-
-    # Local import so the module can be imported in environments where openai isn't installed.
-    from openai import OpenAI
-
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=api_key,
@@ -153,12 +150,22 @@ def _parse_and_validate_categories(raw_text: str, titles: Sequence[str]) -> List
     return out
 
 
-_WORD_RE = re.compile(r"^[A-Za-z]+(?: [A-Za-z]+)?$")
-
-
 def _is_title_case_one_or_two_words(s: str) -> bool:
-    if not _WORD_RE.fullmatch(s):
+    """
+    Validate a *new* category label.
+
+    Accepts exactly 1–2 words made of ASCII letters and a single optional space.
+    Each word must be either:
+      - Title Case (first letter uppercase, remaining letters lowercase), e.g. "Chinese"
+      - ALL CAPS acronym, e.g. "AI", "LLM"
+
+    This allows labels like "Chinese AI" while still rejecting non-letter characters,
+    extra spaces, and lowercase labels like "chinese ai".
+    """
+    # Must be 1–2 words, letters/spaces only (no punctuation/digits), exactly one optional space
+    if not re.fullmatch(r"^[A-Za-z]+(?: [A-Za-z]+)?$", s):
         return False
+
     words = s.split(" ")
-    return all(w and w[0].isupper() and w[1:].islower() for w in words)
+    return all(w and (w.istitle() or w.isupper()) for w in words)
 
