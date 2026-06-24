@@ -139,8 +139,6 @@ llm:
     min_chunk_size: 1                # smallest chunk size during split retries
     poison_mode: "mark"              # "fail" | "mark"
     poison_fallback_category: "Unrecognized"
-    tokens_per_title: 30             # max_tokens = max(min_tokens, batch_size * tokens_per_title)
-    min_tokens: 128                  # floor for the computed max_tokens cap
 
   # --------------------------------------------------------------------------- #
   # Task 5: Curate for publication — operational knobs

@@ -67,15 +67,10 @@ def categorize_titles_via_openrouter(
     titles: Sequence[str],
     temperature: float,
     base_url: str,
-    tokens_per_title: int,
-    min_tokens: int,
     timeout: float,
 ) -> CategorizationResult:
     """Return exactly one primary category per title (same order)."""
     prompt = build_categorization_prompt(template_path=template_path, titles=titles)
-
-    # max_tokens scales with batch size; both knobs come from settings.yml.
-    max_tokens = max(min_tokens, len(titles) * tokens_per_title)
 
     raw_text = _call_openrouter(
         api_key=api_key,
@@ -83,7 +78,6 @@ def categorize_titles_via_openrouter(
         prompt=prompt,
         temperature=temperature,
         base_url=base_url,
-        max_tokens=max_tokens,
         timeout=timeout,
     )
 
@@ -100,21 +94,15 @@ def _call_openrouter(
     prompt: str,
     temperature: float,
     base_url: str,
-    max_tokens: int | None,
     timeout: float,
 ) -> str:
     """
-    Call OpenRouter via the OpenAI-compatible SDK using explicit streaming.
+    Call OpenRouter via the OpenAI-compatible SDK (non-streaming) and return response text.
 
-    Why streaming=True:
-    - OpenRouter guarantees SSE streaming works for every model.
-    - Non-streaming (the default) is unreliable on free-tier: some models return
-      SSE format anyway (causes JSONDecodeError or choices=None in the SDK),
-      others return null content when "stream": false is sent explicitly.
-    - With stream=True the SDK handles SSE parsing internally; we just collect
-      the content delta chunks and join them. This works uniformly for all models.
-
-    max_tokens caps response length to prevent excessively long generations.
+    Used exclusively for categorization (nemotron-nano). This model returns a
+    well-formed non-streaming JSON response with no SSE leakage.
+    No max_tokens is set — the output is a small JSON array and the model
+    handles it correctly without a cap.
     """
     client = OpenAI(
         base_url=base_url,
@@ -122,52 +110,25 @@ def _call_openrouter(
         timeout=timeout,
     )
 
-    create_kwargs: dict = {
-        "model": model,
-        "messages": [
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
             {
                 "role": "system",
-                "content": "You are a strict JSON-only output engine. Reply with only the JSON array, no explanation.",
+                "content": "You are a strict JSON-only classification engine.",
             },
             {"role": "user", "content": prompt},
         ],
-        "temperature": temperature,
-        "stream": True,
-    }
-    if max_tokens is not None:
-        create_kwargs["max_tokens"] = max_tokens
+        temperature=temperature,
+    )
 
-    try:
-        stream = client.chat.completions.create(**create_kwargs)
-        content_parts: list[str] = []
-        finish_reason: str | None = None
-        choice_error = None
-
-        for chunk in stream:
-            if not chunk.choices:
-                # Final usage-only chunk (empty choices array) — safe to skip.
-                continue
-            choice = chunk.choices[0]
-
-            # Per OpenRouter spec, streaming choices may carry error metadata.
-            choice_error = getattr(choice, "error", None)
-            if choice_error:
-                break
-
-            if choice.finish_reason:
-                finish_reason = choice.finish_reason
-
-            delta_content = getattr(choice.delta, "content", None)
-            if delta_content:
-                content_parts.append(delta_content)
-
-    except OpenAIError:
-        raise
-    except Exception as exc:
+    if not resp.choices:
         raise OpenAIError(
-            f"Unexpected error calling OpenRouter: {type(exc).__name__}: {exc}"
-        ) from exc
+            f"OpenRouter returned a response with no choices. model={model!r}"
+        )
 
+    choice = resp.choices[0]
+    choice_error = getattr(choice, "error", None)
     if choice_error:
         code = getattr(choice_error, "code", None) or (
             choice_error.get("code") if isinstance(choice_error, dict) else None
@@ -176,20 +137,18 @@ def _call_openrouter(
             choice_error.get("message") if isinstance(choice_error, dict) else None
         )
         raise OpenAIError(
-            f"OpenRouter provider error in streaming chunk. "
+            f"OpenRouter provider error. "
             f"model={model!r} error_code={code!r} error_message={msg!r}"
         )
 
-    content = "".join(content_parts).strip()
-
-    if not content:
-        # Empty stream: model overloaded, rate-limited, or content-filtered.
+    content = choice.message.content
+    if not content or not content.strip():
         raise OpenAIError(
-            f"OpenRouter returned empty streaming content. "
-            f"model={model!r} finish_reason={finish_reason!r}"
+            f"OpenRouter returned empty content. "
+            f"model={model!r} finish_reason={choice.finish_reason!r}"
         )
 
-    return content
+    return content.strip()
 
 
 def _parse_and_validate_categories(raw_text: str, titles: Sequence[str]) -> List[str]:

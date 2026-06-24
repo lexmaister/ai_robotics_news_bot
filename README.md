@@ -144,8 +144,6 @@ The bot uses two models with different cost/quality tradeoffs:
 | `session.domains_per_session` | Domains sampled per run |
 | `llm.timeout` | OpenRouter HTTP timeout (seconds), shared by tasks 4 & 5 |
 | `llm.categorization.batch_size` | Titles sent to LLM per round in task 4 |
-| `llm.categorization.tokens_per_title` | `max_tokens = max(min_tokens, batch × tokens_per_title)` |
-| `llm.categorization.min_tokens` | Floor for computed `max_tokens` |
 | `llm.categorization.max_total_rounds` | Hard loop cap for task 4 |
 | `llm.categorization.poison_mode` | `"mark"` silently labels bad titles; `"fail"` halts the flow |
 | `llm.curation.batch_size` | Max candidate articles fetched for task 5 |

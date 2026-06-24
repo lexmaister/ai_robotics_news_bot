@@ -91,8 +91,6 @@ class CategorizationSettings(BaseModel):
     min_chunk_size: int = Field(gt=0)
     poison_mode: Literal["fail", "mark"] = "mark"
     poison_fallback_category: str = "Unrecognized"
-    tokens_per_title: int = Field(gt=0)
-    min_tokens: int = Field(gt=0)
 
 
 class CurationSettings(BaseModel):

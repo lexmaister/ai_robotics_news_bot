@@ -239,8 +239,6 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
     poison_fallback = str(cat_cfg.poison_fallback_category)
 
     model = str(settings.llm.categorization_model)
-    tokens_per_title = int(cat_cfg.tokens_per_title)
-    min_tokens = int(cat_cfg.min_tokens)
     llm_timeout = float(settings.llm.timeout)
 
     db_cfg = _db_config_from_env()
@@ -257,8 +255,6 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
             titles=titles,
             temperature=0.0,
             base_url=settings.llm.openrouter_base_url,
-            tokens_per_title=tokens_per_title,
-            min_tokens=min_tokens,
             timeout=llm_timeout,
         )
         return result.categories
