@@ -9,11 +9,14 @@ Stages (as Prefect tasks):
 3) Task 3: Insert articles into Postgres newsbot DB (skip duplicates via UNIQUE constraints).
 4) Task 4: Categorize uncategorized titles backlog via OpenRouter (strict JSON) and update articles.category.
 5) Task 5: Curate categorized+unpublicated articles via OpenRouter; write /app/data/to_publish.json.
+6) Task 6: Publish curated articles to Telegram channel; mark each as publicated=TRUE in DB immediately after posting.
 
 Design notes:
 - No concurrency: tasks run sequentially.
 - Fail-fast: OpenAIError or invalid model output raises and fails the flow.
 - Graceful skip: empty candidate backlog in Task 5 is a no-op (not a failure).
+- Task 6 only runs if Task 5 returned status="ok" with selected > 0 in this session,
+  preventing stale to_publish.json from being re-published.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from src.db import (
     fetch_recent_published_context,
     fetch_titles_for_categorization,
     insert_or_skip_article,
+    mark_publicated,
     update_category,
 )
 from openai import OpenAIError
@@ -42,6 +46,12 @@ from openai import OpenAIError
 from src.curation import (
     categorize_titles_via_openrouter,
     curate_articles_via_openrouter,
+)
+from src.publishing import (
+    ArticleToPublish,
+    TelegramPublishError,
+    format_article_message,
+    send_telegram_message,
 )
 
 
@@ -243,6 +253,7 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
             template_path=env.categorization_prompt_path,
             titles=titles,
             temperature=0.0,
+            base_url=settings.llm.openrouter_base_url,
         )
         return result.categories
 
@@ -440,6 +451,117 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
+@task(name="task6-publish-to-telegram")
+def publish_to_telegram_task(curation: dict[str, Any]) -> dict[str, Any]:
+    """
+    Task 6: Publish curated articles to the Telegram channel.
+
+    Guards:
+    - Skips (non-failure) if Task 5 did not run or selected 0 articles.
+      This is the sole session-freshness check: task5's result is passed
+      explicitly, so stale on-disk to_publish.json is never used.
+    - After each successful Telegram post, immediately marks the article as
+      publicated=TRUE in DB. This prevents re-selection by future Task 5 runs
+      and provides idempotency even if the task is retried mid-batch.
+    """
+    log = get_run_logger()
+
+    # --- Session-freshness guard -------------------------------------------
+    # Only proceed if task5 produced results in *this* flow run.
+    # curation["status"] is set to "ok" only when task5 actually wrote
+    # to_publish.json; any other value ("skipped") means there is nothing new.
+    if curation.get("status") != "ok":
+        log.info(
+            "Curation did not produce articles this session (status=%s). "
+            "Skipping publication.",
+            curation.get("status"),
+        )
+        return {"status": "skipped", "reason": "curation_skipped", "published": 0}
+
+    if curation.get("selected", 0) == 0:
+        log.info("Curation selected 0 articles. Skipping publication.")
+        return {"status": "skipped", "reason": "zero_selected", "published": 0}
+
+    # --- Load payload written by task5 in this session ----------------------
+    env = EnvSettings()
+    raw = json.loads(env.to_publish_path.read_text(encoding="utf-8"))
+    raw_articles = raw.get("articles", [])
+
+    if not raw_articles:
+        log.info("to_publish.json contains no articles. Skipping publication.")
+        return {"status": "skipped", "reason": "empty_payload", "published": 0}
+
+    articles = [
+        ArticleToPublish(
+            id=a["id"],
+            title=a["title"],
+            category=a["category"],
+            link=a["link"],
+        )
+        for a in raw_articles
+    ]
+
+    log.info(
+        "Publishing %d article(s) to Telegram channel %s",
+        len(articles),
+        env.telegram_channel_id,
+    )
+
+    bot_token = env.telegram_bot_token.get_secret_value()
+    channel_id = env.telegram_channel_id
+
+    db_cfg = _db_config_from_env()
+    conn = connect(db_cfg)
+    published_ids: list[int] = []
+
+    try:
+        for article in articles:
+            msg = format_article_message(article)
+
+            # Post to Telegram — raises TelegramPublishError on failure.
+            send_telegram_message(
+                bot_token=bot_token,
+                channel_id=channel_id,
+                text=msg,
+            )
+
+            # Mark in DB immediately after a successful post so that even if
+            # the loop is interrupted, already-posted articles are not re-sent.
+            mark_publicated(conn, article_id=article.id)
+            conn.commit()
+            published_ids.append(article.id)
+
+            log.info(
+                "Published and marked: article_id=%s category=%s title=%.80s",
+                article.id,
+                article.category,
+                article.title,
+            )
+
+    except TelegramPublishError as exc:
+        log.error(
+            "Telegram publish failed after %d/%d article(s). Error: %s",
+            len(published_ids),
+            len(articles),
+            str(exc),
+        )
+        raise
+
+    finally:
+        conn.close()
+
+    log.info(
+        "Publication complete: published=%d article_ids=%s",
+        len(published_ids),
+        published_ids,
+    )
+    return {
+        "status": "ok",
+        "published": len(published_ids),
+        "article_ids": published_ids,
+    }
+
+
 @flow(name="daily-news-flow")
 def daily_news_flow() -> dict:
     """Main production flow entrypoint."""
@@ -448,6 +570,7 @@ def daily_news_flow() -> dict:
     storage = insert_to_db_task(ingestion["articles"], ingestion["collected_dt"])
     categorization = categorize_backlog_task(cfg)
     curation = curate_articles_task(cfg)
+    publication = publish_to_telegram_task(curation)
 
     return {
         "config": {
@@ -483,6 +606,7 @@ def daily_news_flow() -> dict:
         "storage": storage,
         "categorization": categorization,
         "curation": curation,
+        "publication": publication,
     }
 
 

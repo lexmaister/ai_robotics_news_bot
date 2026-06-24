@@ -12,7 +12,6 @@ RUN pip install --no-cache-dir \
     prefect==3.* \
     openai \
     httpx \
-    python-telegram-bot \
     psycopg2-binary \
     pgvector \
     sqlalchemy \
