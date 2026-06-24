@@ -8,23 +8,40 @@ Stages (as Prefect tasks):
 2) Task 2: Run ingestion via src.ingestion.run_ingestion(...).
 3) Task 3: Insert articles into Postgres newsbot DB (skip duplicates via UNIQUE constraints).
 4) Task 4: Categorize uncategorized titles backlog via OpenRouter (strict JSON) and update articles.category.
+5) Task 5: Curate categorized+unpublicated articles via OpenRouter; write /app/data/to_publish.json.
 
 Design notes:
-- No concurrency: we categorize from backlog with no locking.
-- Fail-fast: if the model output is invalid, Task 4 raises and the flow fails.
+- No concurrency: tasks run sequentially.
+- Fail-fast: OpenAIError or invalid model output raises and fails the flow.
+- Graceful skip: empty candidate backlog in Task 5 is a no-op (not a failure).
 """
 
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from prefect import flow, get_run_logger, task
 
 from src.config import EnvSettings, load_settings, load_whitelist
 from src.ingestion import run_ingestion
-from src.db import DbConfig, connect, fetch_titles_for_categorization, insert_or_skip_article, update_category
-from src.curation import categorize_titles_via_openrouter, OpenAIError
+from src.db import (
+    DbConfig,
+    connect,
+    fetch_candidates_for_curation,
+    fetch_recent_published_context,
+    fetch_titles_for_categorization,
+    insert_or_skip_article,
+    update_category,
+)
+from src.curation import (
+    categorize_titles_via_openrouter,
+    curate_articles_via_openrouter,
+    OpenAIError,
+)
 
 
 def _db_config_from_env() -> DbConfig:
@@ -174,8 +191,17 @@ def insert_to_db_task(articles: list[dict], collected_dt: str) -> dict:
     finally:
         conn.close()
 
-    log.info("DB insert complete: inserted=%s skipped=%s total=%s", len(inserted_ids), skipped, len(articles))
-    return {"inserted": len(inserted_ids), "skipped": skipped, "inserted_ids": inserted_ids}
+    log.info(
+        "DB insert complete: inserted=%s skipped=%s total=%s",
+        len(inserted_ids),
+        skipped,
+        len(articles),
+    )
+    return {
+        "inserted": len(inserted_ids),
+        "skipped": skipped,
+        "inserted_ids": inserted_ids,
+    }
 
 
 @task(name="task4-categorize-backlog")
@@ -218,7 +244,9 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                 log.info("Backlog is empty. No more titles to categorize")
                 break
 
-            log.info("Fetched batch of %s uncategorized titles from database", len(rows))
+            log.info(
+                "Fetched batch of %s uncategorized titles from database", len(rows)
+            )
 
             ids = [r.id for r in rows]
             titles = [r.title for r in rows]
@@ -238,13 +266,19 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                         updated += 1
 
                     conn.commit()
-                    log.info("Successfully categorized %s articles. Total updated so far: %s", chunk_size, updated)
+                    log.info(
+                        "Successfully categorized %s articles. Total updated so far: %s",
+                        chunk_size,
+                        updated,
+                    )
                     i += chunk_size
 
                 except ValueError as exc:
                     # PROCEED: Model responded, but output was invalid JSON or bad format.
                     conn.rollback()
-                    log.warning("Validation failed: chunk_size=%s err=%s", chunk_size, str(exc))
+                    log.warning(
+                        "Validation failed: chunk_size=%s err=%s", chunk_size, str(exc)
+                    )
 
                     if chunk_size > min_chunk_size:
                         # Halve the chunk to isolate the hallucination
@@ -252,8 +286,13 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                         continue
 
                     # chunk_size == min_chunk_size: Isolate poison-pill title and proceed
-                    log.warning("Marking poison pill and proceeding: article_id=%s", chunk_ids[0])
-                    update_category(conn, article_id=chunk_ids[0], category=poison_fallback)
+                    log.warning(
+                        "Marking poison pill and proceeding: article_id=%s",
+                        chunk_ids[0],
+                    )
+                    update_category(
+                        conn, article_id=chunk_ids[0], category=poison_fallback
+                    )
                     conn.commit()
                     updated += 1
                     i += 1  # Move past the bad title
@@ -261,13 +300,17 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                 except OpenAIError as exc:
                     # HALT: API is down, rate limited, or network failure.
                     conn.rollback()
-                    log.error("Critical LLM API failure. Halting task. Error: %s", str(exc))
+                    log.error(
+                        "Critical LLM API failure. Halting task. Error: %s", str(exc)
+                    )
                     raise  # Stop the flow
 
                 except Exception as exc:
                     # HALT: Unexpected system bug or database disconnect.
                     conn.rollback()
-                    log.error("Unexpected critical error. Halting task. Error: %s", str(exc))
+                    log.error(
+                        "Unexpected critical error. Halting task. Error: %s", str(exc)
+                    )
                     raise  # Stop the flow
 
                 finally:
@@ -276,7 +319,114 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                         break
 
         log.info("Categorization done: updated=%s rounds=%s", updated, rounds)
-        return {"updated": updated, "rounds": rounds, "batch_size": batch_size, "model": model}
+        return {
+            "updated": updated,
+            "rounds": rounds,
+            "batch_size": batch_size,
+            "model": model,
+        }
+
+    finally:
+        conn.close()
+
+
+@task(name="task5-curate-articles")
+def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Task 5: Select best categorized articles for publication. Writes /app/data/to_publish.json."""
+    log = get_run_logger()
+    settings = cfg["settings_obj"]
+    env = EnvSettings()
+
+    cur_cfg = settings.llm.curation
+    db_cfg = _db_config_from_env()
+    conn = connect(db_cfg)
+
+    try:
+        # Fetch candidates: categorized, unpublicated articles
+        candidates = fetch_candidates_for_curation(conn, limit=int(cur_cfg.batch_size))
+        if not candidates:
+            log.info("No categorized unpublicated articles to curate. Skipping.")
+            return {"status": "skipped", "candidates": 0, "selected": 0}
+
+        log.info("Fetched %s candidates for curation.", len(candidates))
+
+        # Fetch recently published articles for diversity context (temporal RAG)
+        recent_context = fetch_recent_published_context(
+            conn, limit=int(cur_cfg.rag_context_size)
+        )
+        log.info(
+            "Fetched %s recently published articles for context.", len(recent_context)
+        )
+
+        # Convert to plain dicts — curation module is DB-agnostic
+        candidate_dicts = [
+            {"id": c.id, "title": c.title, "category": c.category} for c in candidates
+        ]
+        context_dicts = [
+            {"title": c.title, "category": c.category} for c in recent_context
+        ]
+
+        # Call LLM — raises OpenAIError or ValueError on failure (both halt the flow)
+        result = curate_articles_via_openrouter(
+            api_key=env.openrouter_api_key.get_secret_value(),
+            model=str(settings.llm.curation_model),
+            template_path=env.curation_prompt_path,
+            candidates=candidate_dicts,
+            recent_context=context_dicts,
+            max_selected=int(cur_cfg.max_selected),
+            temperature=float(cur_cfg.temperature),
+        )
+
+        log.info(
+            "LLM selected %s article(s) out of %s candidates.",
+            len(result.selected_ids),
+            len(candidates),
+        )
+
+        # Enrich selected IDs with title + category from the already-fetched candidates
+        candidates_by_id = {c.id: c for c in candidates}
+        articles_out = [
+            {
+                "id": cid,
+                "title": candidates_by_id[cid].title,
+                "category": candidates_by_id[cid].category,
+            }
+            for cid in result.selected_ids
+        ]
+
+        to_publish = {
+            "curated_dt": datetime.now(timezone.utc).isoformat(),
+            "articles": articles_out,
+        }
+
+        to_publish_path = Path(env.data_dir) / "to_publish.json"
+        to_publish_path.parent.mkdir(parents=True, exist_ok=True)
+        to_publish_path.write_text(
+            json.dumps(to_publish, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        log.info(
+            "Curation complete: candidates=%s selected=%s output=%s",
+            len(candidates),
+            len(result.selected_ids),
+            to_publish_path,
+        )
+
+        return {
+            "status": "ok",
+            "candidates": len(candidates),
+            "selected": len(result.selected_ids),
+            "output_path": str(to_publish_path),
+        }
+
+    except OpenAIError as exc:
+        log.error("Critical LLM API failure in curation. Halting. Error: %s", str(exc))
+        raise
+
+    except ValueError as exc:
+        log.error("Curation output validation failed. Halting. Error: %s", str(exc))
+        raise
 
     finally:
         conn.close()
@@ -289,6 +439,7 @@ def daily_news_flow() -> dict:
     ingestion = run_ingestion_task(cfg)
     storage = insert_to_db_task(ingestion["articles"], ingestion["collected_dt"])
     categorization = categorize_backlog_task(cfg)
+    curation = curate_articles_task(cfg)
 
     return {
         "config": {
@@ -297,7 +448,9 @@ def daily_news_flow() -> dict:
                 "credits": cfg["settings_obj"].session.credits,
                 "domains_per_session": cfg["settings_obj"].session.domains_per_session,
                 "llm": {
-                    "categorization_model": cfg["settings_obj"].llm.categorization_model,
+                    "categorization_model": cfg[
+                        "settings_obj"
+                    ].llm.categorization_model,
                     "curation_model": cfg["settings_obj"].llm.curation_model,
                     "batch_size": cfg["settings_obj"].llm.categorization.batch_size,
                 },
@@ -321,9 +474,9 @@ def daily_news_flow() -> dict:
         "ingestion": ingestion,
         "storage": storage,
         "categorization": categorization,
+        "curation": curation,
     }
 
 
 if __name__ == "__main__":
     daily_news_flow()
-

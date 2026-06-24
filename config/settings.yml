@@ -135,3 +135,19 @@ llm:
     min_chunk_size: 1                # smallest chunk size during split retries
     poison_mode: "mark"              # "fail" | "mark"
     poison_fallback_category: "Unrecognized"
+
+  # --------------------------------------------------------------------------- #
+  # Task 5: Curate for publication — operational knobs
+  #
+  # How it works:
+  # - Fetch up to batch_size categorized, unpublicated articles from DB.
+  # - Fetch rag_context_size recently published articles as diversity context.
+  # - Ask LLM to return a JSON array of up to max_selected article IDs.
+  # - Validate all returned IDs were in the candidate list sent to the model.
+  # - Write selected articles (id, title, category) to /app/data/to_publish.json.
+  # --------------------------------------------------------------------------- #
+  curation:
+    batch_size: 20                   # max categorized+unpublicated articles to fetch per run
+    max_selected: 3                  # max articles to select for publication per session
+    rag_context_size: 20             # recently published articles for diversity context
+    temperature: 0.0                 # deterministic selection

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # Environment settings (docker-compose injection)
 # ----------------------------
 
+
 class EnvSettings(BaseSettings):
     """
     Runtime settings sourced from environment variables.
@@ -37,6 +38,7 @@ class EnvSettings(BaseSettings):
     In docker-compose worker, these are injected as:
       SETTINGS_PATH, SOURCES_WHITELIST_PATH, LAST_NEWS_PATH, PROMPTS_DIR, NEWSDATA_API_KEY
     """
+
     model_config = SettingsConfigDict(extra="ignore")
 
     settings_path: Path
@@ -44,6 +46,7 @@ class EnvSettings(BaseSettings):
     last_news_path: Path
     categorization_prompt_path: Path
     curation_prompt_path: Path
+    data_dir: Path
     newsdata_api_key: SecretStr
     openrouter_api_key: SecretStr
 
@@ -52,14 +55,17 @@ class EnvSettings(BaseSettings):
 # settings.yml models (ingestion-related only)
 # ----------------------------
 
+
 class SessionSettings(BaseModel):
     """Budgeting and sampling limits per ingestion run."""
+
     credits: int = Field(gt=0)
     domains_per_session: int = Field(gt=0)
 
 
 class NewsDataSettings(BaseModel):
     """NewsData.io parameters used by ingestion."""
+
     language: str
     timeframe: int | None = Field(default=None, gt=0)
     size: int = Field(gt=0)
@@ -70,6 +76,7 @@ class NewsDataSettings(BaseModel):
 
 class CategorizationSettings(BaseModel):
     """Operational knobs for categorization task."""
+
     batch_size: int = Field(gt=0)
     max_total_rounds: int = Field(gt=0)
     min_chunk_size: int = Field(gt=0)
@@ -77,16 +84,28 @@ class CategorizationSettings(BaseModel):
     poison_fallback_category: str = "Unrecognized"
 
 
+class CurationSettings(BaseModel):
+    """Operational knobs for curation task."""
+
+    batch_size: int = Field(gt=0)
+    max_selected: int = Field(gt=0)
+    rag_context_size: int = Field(gt=0)
+    temperature: float = Field(ge=0.0, le=1.0)
+
+
 class LLMSettings(BaseModel):
     """LLM parameters used for titles categorization and curation."""
+
     categorization_model: str
     curation_model: str
 
     categorization: CategorizationSettings
+    curation: CurationSettings
 
 
 class QuerySettings(BaseModel):
     """One query definition. Keep q length <= 100 to avoid API errors."""
+
     name: str
     q: str
 
@@ -98,6 +117,7 @@ class AppSettings(BaseModel):
     We ignore unknown fields because settings.yml may contain orchestration and other knobs
     not required at this layer.
     """
+
     model_config = ConfigDict(extra="ignore")
 
     session: SessionSettings
@@ -110,7 +130,10 @@ class AppSettings(BaseModel):
 # Validators / loaders
 # ----------------------------
 
-def validate_queries_len(settings: AppSettings, *, max_len: int = 100, strict: bool = True) -> None:
+
+def validate_queries_len(
+    settings: AppSettings, *, max_len: int = 100, strict: bool = True
+) -> None:
     """
     Validate query length constraints for NewsData.
 
@@ -170,15 +193,23 @@ def load_whitelist(env: EnvSettings) -> dict[str, list[str]]:
             - domain: another.com
     """
     if not env.sources_whitelist_path.exists():
-        raise FileNotFoundError(f"Whitelist file not found: {env.sources_whitelist_path}")
+        raise FileNotFoundError(
+            f"Whitelist file not found: {env.sources_whitelist_path}"
+        )
 
-    parsed = yaml.safe_load(env.sources_whitelist_path.read_text(encoding="utf-8")) or {}
+    parsed = (
+        yaml.safe_load(env.sources_whitelist_path.read_text(encoding="utf-8")) or {}
+    )
     if not isinstance(parsed, dict):
-        raise ValueError(f"Whitelist YAML must be a mapping: {env.sources_whitelist_path}")
+        raise ValueError(
+            f"Whitelist YAML must be a mapping: {env.sources_whitelist_path}"
+        )
 
     groups_block = parsed.get("groups", parsed)
     if not isinstance(groups_block, dict) or not groups_block:
-        raise ValueError(f"Invalid groups format in whitelist: {env.sources_whitelist_path}")
+        raise ValueError(
+            f"Invalid groups format in whitelist: {env.sources_whitelist_path}"
+        )
 
     groups: dict[str, list[str]] = {}
     for group_name, group_payload in groups_block.items():
@@ -200,7 +231,8 @@ def load_whitelist(env: EnvSettings) -> dict[str, list[str]]:
             groups[str(group_name)] = domains
 
     if not groups:
-        raise ValueError(f"Whitelist file has no usable groups: {env.sources_whitelist_path}")
+        raise ValueError(
+            f"Whitelist file has no usable groups: {env.sources_whitelist_path}"
+        )
 
     return groups
-

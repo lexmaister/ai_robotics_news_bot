@@ -70,6 +70,7 @@ def connect(cfg: DbConfig) -> PgConnection:
 
 # ---------- helpers ----------
 
+
 def _parse_pub_date(pub_date_raw: Optional[str]) -> Optional[datetime]:
     """
     Parse NewsData 'pubDate' string.
@@ -205,7 +206,9 @@ def insert_or_skip_article(
         return False, (int(row2[0]) if row2 else None)
 
 
-def fetch_titles_for_categorization(conn: PgConnection, *, limit: int) -> list[ArticleTitle]:
+def fetch_titles_for_categorization(
+    conn: PgConnection, *, limit: int
+) -> list[ArticleTitle]:
     """
     Fetch a batch of uncategorized article titles.
 
@@ -255,7 +258,9 @@ def mark_publicated(conn: PgConnection, *, article_id: int) -> None:
         cur.execute(MARK_PUBLICATED_SQL, {"id": article_id})
 
 
-def update_embedding(conn: PgConnection, *, article_id: int, embedding: list[float]) -> None:
+def update_embedding(
+    conn: PgConnection, *, article_id: int, embedding: list[float]
+) -> None:
     """
     Store embedding vector, but only if publicated = TRUE.
 
@@ -269,3 +274,82 @@ def update_embedding(conn: PgConnection, *, article_id: int, embedding: list[flo
     """
     with conn.cursor() as cur:
         cur.execute(UPDATE_EMBEDDING_SQL, {"id": article_id, "embedding": embedding})
+
+
+# ---------- curation queries ----------
+
+
+@dataclass(frozen=True)
+class ArticleCandidate:
+    """Categorized, unpublicated article ready for curation."""
+
+    id: int
+    title: str
+    category: str
+
+
+@dataclass(frozen=True)
+class PublishedContext:
+    """Recently published article used as temporal RAG diversity context."""
+
+    title: str
+    category: str
+
+
+SELECT_CANDIDATES_FOR_CURATION_SQL = """
+SELECT id, title, category
+FROM articles
+WHERE category IS NOT NULL
+  AND publicated = FALSE
+ORDER BY collected_dt DESC, id DESC
+LIMIT %(limit)s;
+"""
+
+SELECT_RECENT_PUBLISHED_CONTEXT_SQL = """
+SELECT title, category
+FROM articles
+WHERE publicated = TRUE
+  AND category IS NOT NULL
+ORDER BY pub_date DESC NULLS LAST, id DESC
+LIMIT %(limit)s;
+"""
+
+
+def fetch_candidates_for_curation(
+    conn: PgConnection, *, limit: int
+) -> list[ArticleCandidate]:
+    """
+    Fetch categorized, unpublicated articles for curation (no embedding column needed).
+
+    Returns articles in reverse-chronological order (most recently collected first).
+    """
+    if limit <= 0:
+        raise ValueError("limit must be > 0")
+
+    with conn.cursor() as cur:
+        cur.execute(SELECT_CANDIDATES_FOR_CURATION_SQL, {"limit": limit})
+        rows = cur.fetchall() or []
+
+    return [
+        ArticleCandidate(id=int(r[0]), title=str(r[1]), category=str(r[2]))
+        for r in rows
+    ]
+
+
+def fetch_recent_published_context(
+    conn: PgConnection, *, limit: int
+) -> list[PublishedContext]:
+    """
+    Fetch recently published articles for curation diversity context (temporal RAG).
+
+    Results are ordered by pub_date DESC so the most recently published appear first.
+    Only articles with a non-null category are included.
+    """
+    if limit <= 0:
+        raise ValueError("limit must be > 0")
+
+    with conn.cursor() as cur:
+        cur.execute(SELECT_RECENT_PUBLISHED_CONTEXT_SQL, {"limit": limit})
+        rows = cur.fetchall() or []
+
+    return [PublishedContext(title=str(r[0]), category=str(r[1])) for r in rows]
