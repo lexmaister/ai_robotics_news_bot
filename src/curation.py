@@ -106,11 +106,14 @@ def _call_openrouter(
     """
     Call OpenRouter via the OpenAI-compatible SDK and return response text.
 
-    stream=False is set explicitly because some `:free` models on OpenRouter
-    return SSE streaming format regardless of the request, causing the OpenAI SDK
-    to fail with JSONDecodeError when trying to parse the response body as JSON.
-    max_tokens caps the response length to prevent network-level truncation on
-    long generations.
+    stream is NOT set explicitly. Sending "stream": false in the request body
+    causes some free-tier models on OpenRouter (observed: nemotron-nano) to return
+    null/empty content. The SDK default is already non-streaming. If a model
+    returns SSE format anyway, the SDK raises JSONDecodeError when parsing the
+    response body — caught below and re-raised as OpenAIError to halt the flow.
+
+    max_tokens caps response length to prevent network-level truncation on
+    long generations from verbose models.
     """
     client = OpenAI(
         base_url=base_url,
@@ -128,7 +131,11 @@ def _call_openrouter(
             {"role": "user", "content": prompt},
         ],
         "temperature": temperature,
-        "stream": False,
+        # NOTE: stream=False is intentionally NOT set here.
+        # Explicitly sending "stream": false in the request body causes some
+        # OpenRouter free-tier models (e.g. nemotron-nano) to return null content.
+        # The SDK default is non-streaming; we rely on the json.JSONDecodeError
+        # handler below to catch any model that returns SSE format anyway.
     }
     if max_tokens is not None:
         create_kwargs["max_tokens"] = max_tokens
@@ -151,8 +158,48 @@ def _call_openrouter(
             f"Unexpected error calling OpenRouter: {type(exc).__name__}: {exc}"
         ) from exc
 
-    text = (resp.choices[0].message.content or "").strip()
-    return text
+    # Guard against malformed responses from OpenRouter free-tier models.
+    # Two observed failure modes when SSE/streaming leaks into a non-streaming call:
+    #   1. SDK raises JSONDecodeError (caught above) — clean path.
+    #   2. SDK partially parses the SSE body and produces a ChatCompletion object
+    #      with choices=None or choices=[] — causes TypeError on choices[0] access.
+    if not resp.choices:
+        raise OpenAIError(
+            f"OpenRouter returned a response with no choices "
+            f"(possible SSE format leak or empty response). model={model!r}"
+        )
+
+    choice = resp.choices[0]
+
+    # Per OpenRouter spec, NonStreamingChoice carries an optional error field
+    # (code + message) for provider-level failures. Check it before content.
+    choice_error = getattr(choice, "error", None)
+    if choice_error:
+        code = getattr(choice_error, "code", None) or getattr(
+            choice_error, "get", lambda k, d=None: d
+        )("code")
+        msg = getattr(choice_error, "message", None) or getattr(
+            choice_error, "get", lambda k, d=None: d
+        )("message")
+        raise OpenAIError(
+            f"OpenRouter provider error in choice. "
+            f"model={model!r} error_code={code!r} error_message={msg!r}"
+        )
+
+    content = choice.message.content
+    finish_reason = choice.finish_reason
+
+    if not content or not content.strip():
+        # Empty/null content: model overloaded, rate-limited, content-filtered,
+        # or finish_reason="length" with nothing written.
+        # Raise OpenAIError to halt the flow — must NOT reach the ValueError /
+        # poison-pill path, which would silently mark the backlog as "Unrecognized".
+        raise OpenAIError(
+            f"OpenRouter returned empty content. "
+            f"model={model!r} finish_reason={finish_reason!r}"
+        )
+
+    return content.strip()
 
 
 def _parse_and_validate_categories(raw_text: str, titles: Sequence[str]) -> List[str]:
