@@ -11,7 +11,8 @@ Task 4: Title categorization
 Task 5: Article curation
 - Load curation prompt template (env-provided path)
 - Substitute {{CANDIDATES_JSON}}, {{RECENT_CONTEXT_JSON}}, {{MAX_SELECTED}}
-- Call OpenRouter and parse a JSON array of selected article IDs
+- Call OpenRouter using function/tool calling (select_articles tool)
+- Model fills typed {"selected_ids": [...]} arguments — no free-text parsing needed
 - Validate every returned ID is present in the candidate list sent to the model
 
 Design: synchronous, no concurrency, fail-fast on malformed output.
@@ -48,12 +49,15 @@ PREFERRED_CATEGORIES: set[str] = {
 
 @dataclass(frozen=True)
 class CategorizationResult:
+    """Parsed output of a single categorization LLM call."""
+
     titles: List[str]
     categories: List[str]
     raw_text: str
 
 
 def build_categorization_prompt(*, template_path: Path, titles: Sequence[str]) -> str:
+    """Render the categorization prompt template with the given titles JSON."""
     template = template_path.read_text(encoding="utf-8")
     titles_json = json.dumps(list(titles), ensure_ascii=False)
     return template.replace("{{TITLES_JSON}}", titles_json)
@@ -468,24 +472,6 @@ def _parse_and_validate_selected_ids(
             raise ValueError(
                 f"Selected ID {item} (index {i}) is not in the candidate list "
                 f"sent to the model."
-            )
-        selected.append(item)
-
-    return selected
-    if not isinstance(parsed, list):
-        raise ValueError(
-            f"Curation output must be a JSON array, got {type(parsed).__name__}. Raw: {raw_text[:200]}"
-        )
-
-    selected: list[int] = []
-    for i, item in enumerate(parsed):
-        if not isinstance(item, int):
-            raise ValueError(
-                f"Selected ID at index {i} must be an integer, got {type(item).__name__}: {item!r}"
-            )
-        if item not in candidate_ids:
-            raise ValueError(
-                f"Selected ID {item} (index {i}) is not in the candidate list sent to the model."
             )
         selected.append(item)
 

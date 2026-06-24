@@ -95,7 +95,7 @@ queries:
 # --------------------------------------------------------------------------- #
 # Design Notes
 # --------------------------------------------------------------------------- #
-# • No rotation state needed — random sampling from full whitelist each session.
+# • Round-robin rotation state is persisted in last_news.json (domain_group field).
 # • Deduplication handled at DB level (pgvector upsert on article link/hash).
 # • Theoretical max yield: 30 requests × 10 articles = 300 articles/session,
 #   but real yield is lower due to overlap, dedup, and source availability.
@@ -107,7 +107,7 @@ queries:
 llm:
   # Cheap/free model used for high-volume, low-stakes tasks (title categorization)
   categorization_model: "nvidia/nemotron-nano-9b-v2:free"
-  # Higher-quality model used for final selection + summarization (curation)
+  # Higher-quality model used for article selection via tool calling (curation)
   curation_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
   # OpenRouter API base URL (OpenAI-compatible endpoint)
   openrouter_base_url: "https://openrouter.ai/api/v1"
@@ -146,7 +146,7 @@ llm:
   # How it works:
   # - Fetch up to batch_size categorized, unpublicated articles from DB.
   # - Fetch rag_context_size recently published articles as diversity context.
-  # - Ask LLM to return a JSON array of up to max_selected article IDs.
+  # - Ask LLM via tool calling to select up to max_selected article IDs.
   # - Validate all returned IDs were in the candidate list sent to the model.
   # - Write selected articles (id, title, category) to /app/data/to_publish.json.
   # --------------------------------------------------------------------------- #

@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from prefect import flow, get_run_logger, task
@@ -347,8 +346,10 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
 
                 finally:
                     rounds += 1
-                    if rounds >= max_rounds:
-                        break
+
+                # Check the cap AFTER finally so a propagating exception is never swallowed.
+                if rounds >= max_rounds:
+                    break
 
         log.info("Categorization done: updated=%s rounds=%s", updated, rounds)
         return {

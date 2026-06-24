@@ -22,14 +22,8 @@ Articles already published recently — avoid selecting redundant topics:
 4. **Quality** — Prefer concrete developments over speculative or opinion pieces.
 
 ## Output Format
-Return ONLY a valid JSON array of selected integer article IDs. Nothing else.
+Call the `select_articles` tool with the IDs of your selected articles.
 
-Example: `[123, 456, 789]`
-
-If no articles meet the quality bar, return: `[]`
-
-## Rules
-- Output MUST be a JSON array of integers only.
 - IDs MUST be taken from the candidate list above.
 - Select AT MOST {{MAX_SELECTED}} articles.
-- NO markdown, NO explanation, NO text outside the JSON array.
+- If no articles meet the quality bar, call `select_articles` with an empty list.

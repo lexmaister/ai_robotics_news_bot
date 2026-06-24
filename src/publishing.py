@@ -1,25 +1,9 @@
 """
 src/publishing.py
 
-Telegram channel publishing for the AI/Robotics news bot.
-
-Task 6 responsibilities:
-- Receive the list of curated articles selected by Task 5.
-- Format each article as an HTML Telegram message.
-- POST messages to the Telegram Bot API via httpx (synchronous — no event-loop
-  conflicts inside a Prefect worker thread).
-- Raise TelegramPublishError on any API-level or network-level error so the
-  Prefect task can decide whether to retry or fail the flow.
-
-Design notes:
-- Synchronous httpx.post avoids the asyncio complexity of python-telegram-bot v20+
-  inside a Prefect sync-task context.
-- Format: "{emoji} <b>Category</b>\\n\\nTitle\\n\\nURL"
-  The bare URL at the end triggers Telegram's automatic link-preview (article
-  thumbnail + excerpt), which is the best UX for a news channel.
-- HTML parse_mode: category and title are html.escape()-ed to prevent injection.
-- Fail-fast on any error: the caller (task6) is responsible for deciding whether
-  to retry or abort, and for committing DB state for already-published articles.
+Telegram publication helpers for Task 6.
+Formats articles as HTML messages and POSTs them via the Bot HTTP API (synchronous httpx).
+Raises TelegramPublishError on any API or network failure.
 """
 
 from __future__ import annotations
@@ -86,18 +70,10 @@ class TelegramPublishError(RuntimeError):
 
 def format_article_message(article: ArticleToPublish) -> str:
     """
-    Format a single article as a Telegram HTML message.
+    Format an article as a Telegram HTML message.
 
-    Example output (raw text before Telegram renders HTML):
-        🔬 <b>GenAI Research</b>
-
-        GPT-5 Achieves Human-Level Reasoning in Latest Benchmark
-
-        https://example.com/article
-
-    The bare URL at the end triggers Telegram's link-preview (shows the article's
-    thumbnail image and excerpt). The title is HTML-escaped to prevent tags in
-    scraped titles from breaking the parse.
+    Pattern: ``{emoji} <b>Category</b>\n\nTitle\n\nURL``
+    The bare URL triggers Telegram's link-preview. Category and title are HTML-escaped.
     """
     emoji = CATEGORY_EMOJI.get(article.category, _DEFAULT_EMOJI)
     safe_category = html.escape(article.category)

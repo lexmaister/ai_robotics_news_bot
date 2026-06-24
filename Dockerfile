@@ -14,9 +14,6 @@ RUN pip install --no-cache-dir \
     httpx \
     psycopg2-binary \
     pgvector \
-    sqlalchemy \
-    numpy \
-    tiktoken \
     python-dotenv \
     pydantic \
     pydantic-settings \

@@ -1,25 +1,9 @@
 """
 src/db.py
 
-DB connection and minimal queries for the simplified newsbot schema.
-
-Table: articles
-- id (PK)
-- title (UNIQUE)
-- link (UNIQUE)
-- pub_date
-- request_domain
-- request_query_name
-- request_query_field
-- collected_dt
-- category (LLM)
-- publicated (bool)
-- embedding (pgvector) -- only set when publicated = True
-
-New in Phase 2/3:
-- Fetch batches of uncategorized titles for LLM categorization.
-
-NOTE: This module is intentionally synchronous (psycopg2) and simple.
+Synchronous (psycopg2) DB helpers for the newsbot schema.
+Covers: article insert/dedup, batch title fetch, category update,
+publication marking, and curation candidate queries.
 """
 
 from __future__ import annotations
@@ -51,13 +35,7 @@ class ArticleTitle:
 
 
 def connect(cfg: DbConfig) -> PgConnection:
-    """
-    Open a synchronous connection to Postgres (psycopg2).
-
-    Further development:
-    - Consider connection pooling if throughput increases.
-    - Consider explicit transactions for batch operations.
-    """
+    """Open a synchronous psycopg2 connection."""
     conn = psycopg2.connect(
         host=cfg.host,
         port=cfg.port,
@@ -72,15 +50,7 @@ def connect(cfg: DbConfig) -> PgConnection:
 
 
 def _parse_pub_date(pub_date_raw: Optional[str]) -> Optional[datetime]:
-    """
-    Parse NewsData 'pubDate' string.
-
-    In last_news.json it looks like: '2026-06-17 09:15:08'
-
-    Further development:
-    - If provider changes format, add more parsing strategies.
-    - Decide if you want TIMESTAMPTZ always in UTC (recommended).
-    """
+    """Parse a NewsData pubDate string ('2026-06-17 09:15:08') to a UTC datetime."""
     if not pub_date_raw:
         return None
     try:
@@ -137,13 +107,6 @@ SET publicated = TRUE
 WHERE id = %(id)s;
 """
 
-UPDATE_EMBEDDING_SQL = """
-UPDATE articles
-SET embedding = %(embedding)s
-WHERE id = %(id)s
-  AND publicated = TRUE;
-"""
-
 # Titles needing categorization (category is NULL).
 # We do not filter on publicated here; typically publicated rows will already have a category.
 SELECT_TITLES_FOR_CATEGORIZATION_SQL = """
@@ -167,19 +130,10 @@ def insert_or_skip_article(
     collected_dt_raw: str,
 ) -> Tuple[bool, Optional[int]]:
     """
-    Insert a single article row, skipping if it conflicts with existing UNIQUE(title/link).
+    Insert a single article row; skip on UNIQUE conflict (title or link).
 
-    Returns:
-      (inserted, article_id)
-
-    inserted=False means either:
-      - duplicate in current run (same title/link), OR
-      - already present in DB from previous runs.
-
-    Further development:
-    - If you later want to track multiple observations, move request_* into a separate table.
-    - If you want "first wins" consistently, keep DO NOTHING.
-      If you want "last wins", change ON CONFLICT DO UPDATE (but you'll overwrite request_*).
+    Returns (inserted, article_id). When inserted=False the article was already
+    in the DB; article_id is still resolved via a SELECT fallback.
     """
     pub_date = _parse_pub_date(pub_date_raw)
     collected_dt = datetime.fromisoformat(collected_dt_raw)
@@ -209,18 +163,7 @@ def insert_or_skip_article(
 def fetch_titles_for_categorization(
     conn: PgConnection, *, limit: int
 ) -> list[ArticleTitle]:
-    """
-    Fetch a batch of uncategorized article titles.
-
-    The caller should pass:
-      limit = settings.llm.categorization.batch_size
-
-    Returns a list of (id, title) in the order they should be sent to the model.
-
-    Further development:
-    - Add a "locked_by/locked_dt" mechanism if you run multiple workers concurrently.
-    - Add optional time window filters (e.g., last N days).
-    """
+    """Fetch up to `limit` uncategorized article titles (category IS NULL), newest first."""
     if limit <= 0:
         raise ValueError("limit must be > 0")
 
@@ -236,44 +179,15 @@ def fetch_titles_for_categorization(
 
 
 def update_category(conn: PgConnection, *, article_id: int, category: str) -> None:
-    """
-    Persist LLM category to DB.
-
-    Further development:
-    - Enforce a taxonomy list (validate category before update).
-    - Store model name / prompt version / confidence if you later need audits.
-    """
+    """Write the LLM-assigned category for a single article."""
     with conn.cursor() as cur:
         cur.execute(UPDATE_CATEGORY_SQL, {"id": article_id, "category": category})
 
 
 def mark_publicated(conn: PgConnection, *, article_id: int) -> None:
-    """
-    Mark an article as published to the Telegram channel.
-
-    Further development:
-    - Save telegram_message_id / posted_dt if you need re-post protection and audit trail.
-    """
+    """Mark an article as published (publicated = TRUE)."""
     with conn.cursor() as cur:
         cur.execute(MARK_PUBLICATED_SQL, {"id": article_id})
-
-
-def update_embedding(
-    conn: PgConnection, *, article_id: int, embedding: list[float]
-) -> None:
-    """
-    Store embedding vector, but only if publicated = TRUE.
-
-    NOTE: With psycopg2 + pgvector, you typically need a type adapter to pass Python lists
-    directly into a VECTOR column.
-
-    Further development:
-    - Register pgvector adapter for psycopg2, or serialize appropriately.
-    - Store embedding_model and embedded_dt for traceability.
-    - If you later want embeddings for *all* articles, drop the publicated gate.
-    """
-    with conn.cursor() as cur:
-        cur.execute(UPDATE_EMBEDDING_SQL, {"id": article_id, "embedding": embedding})
 
 
 # ---------- curation queries ----------
