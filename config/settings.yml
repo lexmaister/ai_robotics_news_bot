@@ -108,7 +108,7 @@ llm:
   # Cheap/free model used for high-volume, low-stakes tasks (title categorization)
   categorization_model: "nvidia/nemotron-nano-9b-v2:free"
   # Higher-quality model used for article selection via tool calling (curation)
-  curation_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
+  curation_model: "openai/gpt-oss-120b:free"
   # OpenRouter API base URL (OpenAI-compatible endpoint)
   openrouter_base_url: "https://openrouter.ai/api/v1"
   # OpenRouter API call timeout in seconds (shared by all LLM tasks)
