@@ -11,8 +11,7 @@ Task 4: Title categorization
 Task 5: Article curation
 - Load curation prompt template (env-provided path)
 - Substitute {{CANDIDATES_JSON}}, {{RECENT_CONTEXT_JSON}}, {{MAX_SELECTED}}
-- Call OpenRouter using function/tool calling (select_articles tool)
-- Model fills typed {"selected_ids": [...]} arguments — no free-text parsing needed
+- Call OpenRouter and parse the response as a raw JSON array of selected article IDs
 - Validate every returned ID is present in the candidate list sent to the model
 
 Design: synchronous, no concurrency, fail-fast on malformed output.
@@ -242,114 +241,6 @@ def _is_title_case_one_or_two_words(s: str) -> bool:
 # Task 5: Article curation
 # ---------------------------------------------------------------------------
 
-# Tool definition used to force structured output from the curation model.
-# Tool calling bypasses free-text generation entirely — the model fills in
-# typed function arguments, so preamble text, reasoning traces, and SSE
-# format issues are all irrelevant. The response is always a structured dict.
-_SELECT_ARTICLES_TOOL: dict = {
-    "type": "function",
-    "function": {
-        "name": "select_articles",
-        "description": "Select the IDs of the best articles to publish to the Telegram channel.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "selected_ids": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "description": "IDs of the selected articles, in any order.",
-                },
-            },
-            "required": ["selected_ids"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-
-def _call_openrouter_tool(
-    *,
-    api_key: str,
-    model: str,
-    prompt: str,
-    temperature: float,
-    base_url: str,
-    tool: dict,
-    timeout: float,
-) -> str:
-    """
-    Call OpenRouter using function/tool calling and return the raw tool-argument JSON.
-
-    Tool calling forces the model to emit structured JSON arguments directly,
-    bypassing free-text generation entirely. This eliminates preamble text,
-    SSE format issues, and reasoning traces that large models (e.g. nemotron-ultra)
-    may prepend before the actual output. The response is always a well-formed
-    JSON object matching the declared tool schema.
-
-    Returns the raw arguments JSON string, e.g. '{"selected_ids": [42, 17, 93]}'.
-    """
-    client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
-    tool_name = tool["function"]["name"]
-
-    try:
-        stream = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            tools=[tool],
-            tool_choice={"type": "function", "function": {"name": tool_name}},
-            stream=True,
-        )
-
-        args_parts: list[str] = []
-        finish_reason: str | None = None
-        choice_error = None
-
-        for chunk in stream:
-            if not chunk.choices:
-                continue
-            choice = chunk.choices[0]
-
-            choice_error = getattr(choice, "error", None)
-            if choice_error:
-                break
-
-            if choice.finish_reason:
-                finish_reason = choice.finish_reason
-
-            if choice.delta.tool_calls:
-                for tc in choice.delta.tool_calls:
-                    if tc.function and tc.function.arguments:
-                        args_parts.append(tc.function.arguments)
-
-    except OpenAIError:
-        raise
-    except Exception as exc:
-        raise OpenAIError(
-            f"Unexpected error calling OpenRouter with tool: {type(exc).__name__}: {exc}"
-        ) from exc
-
-    if choice_error:
-        code = getattr(choice_error, "code", None) or (
-            choice_error.get("code") if isinstance(choice_error, dict) else None
-        )
-        msg = getattr(choice_error, "message", None) or (
-            choice_error.get("message") if isinstance(choice_error, dict) else None
-        )
-        raise OpenAIError(
-            f"OpenRouter provider error in tool streaming chunk. "
-            f"model={model!r} error_code={code!r} error_message={msg!r}"
-        )
-
-    args_json = "".join(args_parts).strip()
-    if not args_json:
-        raise OpenAIError(
-            f"OpenRouter returned empty tool call arguments. "
-            f"model={model!r} finish_reason={finish_reason!r}"
-        )
-
-    return args_json
-
 
 @dataclass(frozen=True)
 class CurationResult:
@@ -389,18 +280,18 @@ def curate_articles_via_openrouter(
     timeout: float,
 ) -> CurationResult:
     """
-    Call OpenRouter to select articles for publication via tool/function calling.
+    Call OpenRouter to select articles for publication.
 
-    Using tool calling instead of plain text generation ensures the model always
-    returns a typed {"selected_ids": [...]} object regardless of model size or
-    reasoning verbosity — no preamble stripping or regex extraction needed.
+    Sends a plain-text prompt and parses the model's response as a raw JSON
+    array of integer article IDs, e.g. ``[42, 17, 93]``.  Markdown code fences
+    are stripped before parsing so models that wrap output are handled cleanly.
 
     Candidates must be dicts with keys: "id" (int), "title" (str), "category" (str).
     Recent context must be dicts with keys: "title" (str), "category" (str).
 
     Raises:
         OpenAIError: API unavailable, rate-limited, or auth failure — caller should HALT.
-        ValueError:  Invalid tool output or IDs outside the candidate list — caller should HALT.
+        ValueError:  Invalid JSON output or IDs outside the candidate list — caller should HALT.
     """
     candidate_ids: set[int] = {int(c["id"]) for c in candidates}
 
@@ -411,58 +302,55 @@ def curate_articles_via_openrouter(
         max_selected=max_selected,
     )
 
-    raw_args = _call_openrouter_tool(
+    raw_text = _call_openrouter(
         api_key=api_key,
         model=model,
         prompt=prompt,
         temperature=temperature,
         base_url=base_url,
-        tool=_SELECT_ARTICLES_TOOL,
         timeout=timeout,
     )
 
     selected_ids = _parse_and_validate_selected_ids(
-        raw_args, candidate_ids=candidate_ids
+        raw_text, candidate_ids=candidate_ids
     )
-    return CurationResult(selected_ids=selected_ids, raw_text=raw_args)
+    return CurationResult(selected_ids=selected_ids, raw_text=raw_text)
 
 
 def _parse_and_validate_selected_ids(
-    raw_args: str, *, candidate_ids: set[int]
+    raw_text: str, *, candidate_ids: set[int]
 ) -> list[int]:
     """
-    Parse select_articles tool call arguments and validate all IDs.
+    Parse LLM output and validate it is a JSON array of integers within candidate_ids.
 
-    Expected input (from _call_openrouter_tool):
-        '{"selected_ids": [42, 17, 93]}'
-
-    Raises ValueError on any structural or semantic violation.
+    Strips markdown code fences if the model wraps the output.
+    Raises ValueError on any violation.
     """
+    text = raw_text.strip()
+
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    if text.startswith("```"):
+        lines = text.splitlines()
+        inner = (
+            lines[1:-1] if len(lines) > 2 and lines[-1].strip() == "```" else lines[1:]
+        )
+        text = "\n".join(inner).strip()
+
     try:
-        args = json.loads(raw_args)
+        parsed = json.loads(text)
     except Exception as exc:
         raise ValueError(
-            f"Tool call arguments are not valid JSON: {exc}. Raw: {raw_args[:500]}"
+            f"Curation output is not valid JSON: {exc}. Raw: {raw_text[:500]}"
         ) from exc
 
-    if not isinstance(args, dict):
+    if not isinstance(parsed, list):
         raise ValueError(
-            f"Tool call arguments must be a JSON object, got {type(args).__name__}. "
-            f"Raw: {raw_args[:200]}"
-        )
-
-    ids_raw = args.get("selected_ids")
-    if ids_raw is None:
-        raise ValueError(
-            f"Tool call arguments missing 'selected_ids' key. Raw: {raw_args[:200]}"
-        )
-    if not isinstance(ids_raw, list):
-        raise ValueError(
-            f"'selected_ids' must be a JSON array, got {type(ids_raw).__name__}"
+            f"Curation output must be a JSON array, got {type(parsed).__name__}. "
+            f"Raw: {raw_text[:200]}"
         )
 
     selected: list[int] = []
-    for i, item in enumerate(ids_raw):
+    for i, item in enumerate(parsed):
         if not isinstance(item, int):
             raise ValueError(
                 f"Selected ID at index {i} must be an integer, "
