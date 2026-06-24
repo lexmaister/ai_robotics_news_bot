@@ -76,6 +76,83 @@ The bot uses two models with different cost/quality tradeoffs:
 - **Categorization (Task 4, high volume):** A fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) processes large batches of raw titles and assigns taxonomy labels (e.g., `"AI Policy"`, `"Humanoid Robots"`).
 - **Curation (Task 5, low volume):** A higher-quality model (e.g., `nvidia/nemotron-3-ultra-550b`) evaluates the categorized backlog and selects the best articles for publication, using recently published articles as diversity context.
 
+## Data Flow
+
+```
+ .env                    config/settings.yml          config/sources_whitelist.yml
+  │ secrets                │ tuning knobs                │ domain groups A/B/C…
+  │                        │                             │
+  └──────────┬─────────────┘                             │
+             ▼                                           │
+       ┌─────────────┐                                   │
+       │  task1      │ ◄─────────────────────────────────┘
+       │ load-config │  validates all config, fails fast
+       └──────┬──────┘
+              │ settings_obj, whitelist_obj
+              ▼
+       ┌─────────────┐       newsdata.io API
+       │  task2      │ ◄──────────────────────
+       │  ingestion  │  fetches up to 30 articles/domain group
+       └──────┬──────┘
+              │ articles[], collected_dt         data/last_news.json
+              │                                  (rotation state, persisted)
+              ▼
+       ┌─────────────┐
+       │  task3      │
+       │ insert-to-db│  ON CONFLICT DO NOTHING → dedup
+       └──────┬──────┘
+              │
+              ▼
+     PostgreSQL newsbot DB
+     articles (category=NULL, publicated=FALSE)
+              │
+              ▼
+       ┌─────────────┐       OpenRouter  (categorization_model)
+       │  task4      │ ◄──────────────────────────────────────
+       │ categorize  │  batch titles → JSON array of labels
+       │  backlog    │  loops until backlog empty or max_rounds
+       └──────┬──────┘
+              │ UPDATE articles SET category=…
+              ▼
+     articles (category≠NULL, publicated=FALSE)
+              │
+              ├─────────────────────────────────────────────────────────┐
+              │ candidates (up to batch_size)    recently published      │
+              │                                  (rag_context_size rows) │
+              ▼                                                          │
+       ┌─────────────┐       OpenRouter  (curation_model)               │
+       │  task5      │ ◄──────────────────────────────────  ◄───────────┘
+       │   curate    │  selects up to max_selected IDs
+       └──────┬──────┘
+              │                          data/to_publish.json
+              │ selected ids + metadata  (written this session)
+              ▼
+       ┌─────────────┐       Telegram Bot API
+       │  task6      │ ──────────────────────►  channel post
+       │   publish   │  one HTTP POST per article
+       └──────┬──────┘
+              │ mark_publicated=TRUE (immediately after each post)
+              ▼
+     articles (publicated=TRUE)  →  excluded from future task5 candidates
+```
+
+**Key config knobs** (all in `config/settings.yml`):
+
+| Setting | Controls |
+|---|---|
+| `session.credits` | Max newsdata.io requests per run |
+| `session.domains_per_session` | Domains sampled per run |
+| `llm.timeout` | OpenRouter HTTP timeout (seconds), shared by tasks 4 & 5 |
+| `llm.categorization.batch_size` | Titles sent to LLM per round in task 4 |
+| `llm.categorization.tokens_per_title` | `max_tokens = max(min_tokens, batch × tokens_per_title)` |
+| `llm.categorization.min_tokens` | Floor for computed `max_tokens` |
+| `llm.categorization.max_total_rounds` | Hard loop cap for task 4 |
+| `llm.categorization.poison_mode` | `"mark"` silently labels bad titles; `"fail"` halts the flow |
+| `llm.curation.batch_size` | Max candidate articles fetched for task 5 |
+| `llm.curation.rag_context_size` | Recently published articles used as diversity context |
+| `llm.curation.max_selected` | Max articles posted per session |
+| `llm.curation.max_tokens` | Hard cap on curation LLM response length |
+
 ## Quick Start
 
 ### 1. Clone and configure

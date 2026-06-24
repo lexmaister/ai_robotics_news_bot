@@ -239,6 +239,9 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
     poison_fallback = str(cat_cfg.poison_fallback_category)
 
     model = str(settings.llm.categorization_model)
+    tokens_per_title = int(cat_cfg.tokens_per_title)
+    min_tokens = int(cat_cfg.min_tokens)
+    llm_timeout = float(settings.llm.timeout)
 
     db_cfg = _db_config_from_env()
     conn = connect(db_cfg)
@@ -254,6 +257,9 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
             titles=titles,
             temperature=0.0,
             base_url=settings.llm.openrouter_base_url,
+            tokens_per_title=tokens_per_title,
+            min_tokens=min_tokens,
+            timeout=llm_timeout,
         )
         return result.categories
 
@@ -306,6 +312,16 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                         continue
 
                     # chunk_size == min_chunk_size: Isolate poison-pill title and proceed
+                    if poison_mode == "fail":
+                        log.error(
+                            "poison_mode='fail': could not categorize article_id=%s. Halting.",
+                            chunk_ids[0],
+                        )
+                        raise RuntimeError(
+                            f"Categorization halted (poison_mode='fail') for "
+                            f"article_id={chunk_ids[0]}: {exc}"
+                        ) from exc
+
                     log.warning(
                         "Marking poison pill and proceeding: article_id=%s",
                         chunk_ids[0],
@@ -396,6 +412,8 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
             max_selected=int(cur_cfg.max_selected),
             temperature=float(cur_cfg.temperature),
             base_url=settings.llm.openrouter_base_url,
+            max_tokens=int(cur_cfg.max_tokens),
+            timeout=float(settings.llm.timeout),
         )
 
         log.info(

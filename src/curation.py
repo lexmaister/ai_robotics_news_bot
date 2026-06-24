@@ -65,11 +65,17 @@ def categorize_titles_via_openrouter(
     model: str,
     template_path: Path,
     titles: Sequence[str],
-    temperature: float = 0.0,
+    temperature: float,
     base_url: str,
+    tokens_per_title: int,
+    min_tokens: int,
+    timeout: float,
 ) -> CategorizationResult:
     """Return exactly one primary category per title (same order)."""
     prompt = build_categorization_prompt(template_path=template_path, titles=titles)
+
+    # max_tokens scales with batch size; both knobs come from settings.yml.
+    max_tokens = max(min_tokens, len(titles) * tokens_per_title)
 
     raw_text = _call_openrouter(
         api_key=api_key,
@@ -77,6 +83,8 @@ def categorize_titles_via_openrouter(
         prompt=prompt,
         temperature=temperature,
         base_url=base_url,
+        max_tokens=max_tokens,
+        timeout=timeout,
     )
 
     categories = _parse_and_validate_categories(raw_text, titles)
@@ -86,25 +94,62 @@ def categorize_titles_via_openrouter(
 
 
 def _call_openrouter(
-    *, api_key: str, model: str, prompt: str, temperature: float, base_url: str
+    *,
+    api_key: str,
+    model: str,
+    prompt: str,
+    temperature: float,
+    base_url: str,
+    max_tokens: int | None,
+    timeout: float,
 ) -> str:
-    """Call OpenRouter via the OpenAI-compatible SDK and return response text."""
+    """
+    Call OpenRouter via the OpenAI-compatible SDK and return response text.
+
+    stream=False is set explicitly because some `:free` models on OpenRouter
+    return SSE streaming format regardless of the request, causing the OpenAI SDK
+    to fail with JSONDecodeError when trying to parse the response body as JSON.
+    max_tokens caps the response length to prevent network-level truncation on
+    long generations.
+    """
     client = OpenAI(
         base_url=base_url,
         api_key=api_key,
+        timeout=timeout,
     )
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
+    create_kwargs: dict = {
+        "model": model,
+        "messages": [
             {
                 "role": "system",
-                "content": "You are a strict JSON-only classification engine.",
+                "content": "You are a strict JSON-only output engine. Reply with only the JSON array, no explanation.",
             },
             {"role": "user", "content": prompt},
         ],
-        temperature=temperature,
-    )
+        "temperature": temperature,
+        "stream": False,
+    }
+    if max_tokens is not None:
+        create_kwargs["max_tokens"] = max_tokens
+
+    try:
+        resp = client.chat.completions.create(**create_kwargs)
+    except OpenAIError:
+        raise
+    except json.JSONDecodeError as exc:
+        # The OpenAI SDK failed to parse the raw HTTP response body from OpenRouter.
+        # Most common cause: OpenRouter returned SSE/streaming format on a non-streaming
+        # request (observed on some :free tier models), or the response was truncated
+        # by a network timeout before the JSON was complete.
+        raise OpenAIError(
+            f"OpenRouter HTTP response is not valid JSON "
+            f"(streaming leak or truncated response): {exc}"
+        ) from exc
+    except Exception as exc:
+        raise OpenAIError(
+            f"Unexpected error calling OpenRouter: {type(exc).__name__}: {exc}"
+        ) from exc
 
     text = (resp.choices[0].message.content or "").strip()
     return text
@@ -231,8 +276,10 @@ def curate_articles_via_openrouter(
     candidates: Sequence[dict],
     recent_context: Sequence[dict],
     max_selected: int,
-    temperature: float = 0.0,
+    temperature: float,
     base_url: str,
+    max_tokens: int,
+    timeout: float,
 ) -> CurationResult:
     """
     Call OpenRouter to select articles for publication.
@@ -259,6 +306,8 @@ def curate_articles_via_openrouter(
         prompt=prompt,
         temperature=temperature,
         base_url=base_url,
+        max_tokens=max_tokens,
+        timeout=timeout,
     )
 
     selected_ids = _parse_and_validate_selected_ids(

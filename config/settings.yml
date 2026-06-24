@@ -111,6 +111,7 @@ llm:
   curation_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
   # OpenRouter API base URL (OpenAI-compatible endpoint)
   openrouter_base_url: "https://openrouter.ai/api/v1"
+  timeout: 120                         # OpenRouter API call timeout in seconds (shared by all LLM tasks)
   # ------------------------------------------------------------------------- #
   # Task 4: Categorize backlog (uncategorized titles) — operational knobs
   #
@@ -137,6 +138,8 @@ llm:
     min_chunk_size: 1                # smallest chunk size during split retries
     poison_mode: "mark"              # "fail" | "mark"
     poison_fallback_category: "Unrecognized"
+    tokens_per_title: 30             # max_tokens = max(min_tokens, batch_size * tokens_per_title)
+    min_tokens: 128                  # floor for the computed max_tokens cap
 
   # --------------------------------------------------------------------------- #
   # Task 5: Curate for publication — operational knobs
@@ -153,3 +156,4 @@ llm:
     max_selected: 3                  # max articles to select for publication per session
     rag_context_size: 20             # recently published articles for diversity context
     temperature: 0.0                 # deterministic selection
+    max_tokens: 256                  # hard cap on LLM response length (a few integer IDs; very small)
