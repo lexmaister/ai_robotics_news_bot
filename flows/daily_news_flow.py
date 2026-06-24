@@ -577,7 +577,7 @@ def publish_to_telegram_task(curation: dict[str, Any]) -> dict[str, Any]:
 
 
 @flow(name="daily-news-flow")
-def daily_news_flow(skip_ingestion: bool = False) -> dict:
+def daily_news_flow(skip_ingestion: bool = False, skip_categorization: bool = False) -> dict:
     """Main production flow entrypoint.
 
     Args:
@@ -585,6 +585,10 @@ def daily_news_flow(skip_ingestion: bool = False) -> dict:
             skipped entirely. Useful for running only the LLM pipeline
             (categorize → curate → publish) against the existing DB backlog,
             without spending newsdata.io credits or waiting for API calls.
+            Default: False (normal full run).
+        skip_categorization: When True, task 4 (categorize backlog) is skipped.
+            Useful when the DB backlog is already fully categorized and you only
+            want to run curation and publishing.
             Default: False (normal full run).
     """
     cfg = load_config_task()
@@ -604,7 +608,11 @@ def daily_news_flow(skip_ingestion: bool = False) -> dict:
     else:
         ingestion = run_ingestion_task(cfg)
         storage = insert_to_db_task(ingestion["articles"], ingestion["collected_dt"])
-    categorization = categorize_backlog_task(cfg)
+
+    if skip_categorization:
+        categorization = {"status": "skipped", "updated": 0, "rounds": 0}
+    else:
+        categorization = categorize_backlog_task(cfg)
     curation = curate_articles_task(cfg)
     publication = publish_to_telegram_task(curation)
 
