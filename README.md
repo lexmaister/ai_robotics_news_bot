@@ -13,11 +13,10 @@ ai_robotics_news_bot/
 ├── docker-compose.yml            # Unified: profiles [server] + [worker]
 ├── Dockerfile                    # Worker image
 ├── .env                          # All secrets (gitignored)
-├── .env.example                  # Template with placeholders (tracked)
 ├── .gitignore
 │
 ├── config/                       # Declarative configuration (YAML)
-│   ├── sources_whitelist.yml     # Allowed newsdata.io sources + priority scores
+│   ├── sources_whitelist.yml     # Allowed newsdata.io sources grouped by rotation set
 │   ├── settings.yml              # Tunables: intervals, thresholds, model names
 │   └── prompts/                  # LLM prompt templates
 │       ├── curation.md
@@ -32,17 +31,17 @@ ai_robotics_news_bot/
 │   ├── __init__.py
 │   ├── config.py                 # Loads config/*.yml + env vars
 │   ├── db.py                     # DB connection and queries
-│   ├── embeddings.py             # Embedding model calls
 │   ├── ingestion.py              # newsdata.io fetcher
-│   ├── curation.py               # LLM logic: categorization and curation(OpenRouter)
-│   ├── publisher.py              # Telegram posting
-│   └── analytics.py              # Metrics and reporting
+│   ├── curation.py               # LLM logic: categorization and curation (OpenRouter)
+│   └── publishing.py             # Telegram message formatting and posting
 │
 ├── flows/                        # Prefect flow definitions
-│   ├── daily_news_flow.py
-│   └── analytics_flow.py
+│   ├── daily_news_flow.py        # Main production flow (6 tasks)
+│   └── start_flows.py            # Bootstrap: validates config and registers deployments
 │
-└── tests/
+└── data/                         # Runtime data (gitignored)
+    ├── last_news.json             # Ingestion state: last active group + collected articles
+    └── to_publish.json            # Curation output: articles selected for current session
 ```
 
 ---
@@ -51,15 +50,31 @@ ai_robotics_news_bot/
 
 To operate entirely on the **Newsdata.io Free Tier** (200 credits/day), the bot uses a strict sampling and scheduling strategy:
 * **7 Sessions per Day:** Orchestrated by Prefect, running approximately every 3.5 hours.
-* **30 Requests per Session:** In each session, the bot randomly samples 5 domains from the whitelist and runs 6 broad topic queries against them (5 × 6 = 30 credits). 
+* **30 Requests per Session:** In each session, the bot randomly samples 5 domains from the whitelist and runs 6 broad topic queries against them (5 × 6 = 30 credits).
 * **State Management:** The exact state of the last fetch is saved locally in `data/last_news.json` so the pipeline can gracefully resume without fetching duplicate pages.
 * **Database Deduplication:** Handled safely via PostgreSQL `UNIQUE` constraints and `ON CONFLICT` skips.
 
-## LLM Processing Pipeline
+## Daily News Flow — 6 Tasks
 
-The bot uses OpenRouter to dynamically route prompts to the most cost-effective models for specific tasks:
-1. **Categorization (High Volume):** Uses a fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) to process large batches of raw incoming titles. It forces strict JSON adherence to assign metadata tags (e.g., "AI Policy", "Robotics Market").
-2. **Curation & Summarization (Low Volume):** Uses a heavier, frontier-class model (e.g., `mistral-large-latest` or `nemotron-3-ultra-550b`) to evaluate the categorized backlog, select the absolute best stories, and generate the final Telegram broadcast.
+Each Prefect run executes the following tasks sequentially:
+
+| # | Task | What it does |
+|---|------|--------------|
+| 1 | `task1-load-config` | Loads and validates `settings.yml`, `sources_whitelist.yml`, and all env vars |
+| 2 | `task2-run-ingestion` | Fetches articles from newsdata.io; rotates domain group; saves `last_news.json` |
+| 3 | `task3-insert-to-db` | Inserts new articles into `newsbot` DB; skips duplicates via `ON CONFLICT` |
+| 4 | `task4-categorize-backlog` | Sends uncategorized titles to OpenRouter in batches; writes `category` column |
+| 5 | `task5-curate-articles` | Asks OpenRouter to select the best articles for this session; writes `to_publish.json` |
+| 6 | `task6-publish-to-telegram` | Posts each selected article to the Telegram channel; marks `publicated=TRUE` in DB |
+
+**Duplicate publication protection:** Task 6 is gated on Task 5's in-session result — a leftover `to_publish.json` from a previous run is never used. After each successful post, the article is immediately marked `publicated=TRUE` so Task 5 never selects it again.
+
+## LLM Models (OpenRouter)
+
+The bot uses two models with different cost/quality tradeoffs:
+
+- **Categorization (Task 4, high volume):** A fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) processes large batches of raw titles and assigns taxonomy labels (e.g., `"AI Policy"`, `"Humanoid Robots"`).
+- **Curation (Task 5, low volume):** A higher-quality model (e.g., `nvidia/nemotron-3-ultra-550b`) evaluates the categorized backlog and selects the best articles for publication, using recently published articles as diversity context.
 
 ## Quick Start
 
@@ -68,8 +83,8 @@ The bot uses OpenRouter to dynamically route prompts to the most cost-effective 
 ```bash
 git clone https://github.com/lexmaister/ai_robotics_news_bot.git
 cd ai_robotics_news_bot
-cp .env.example .env
-# Edit .env with your actual secrets
+# Create .env from the template in the Environment Variables section below
+# and fill in your actual secrets
 ```
 
 ### 2. Start the server infrastructure
@@ -214,7 +229,10 @@ docker compose --profile worker up -d
 docker compose --profile worker restart
 
 # Run a flow manually
-docker exec -it ai_robotics_news_bot-worker-1 python -m flows.daily_news_flow
+docker exec -it news_worker python -m flows.daily_news_flow
+
+# Register/update Prefect deployment
+docker exec -it news_worker python -m flows.start_flows
 
 # Check Prefect API health
 curl -s http://localhost:4200/api/health
@@ -260,8 +278,8 @@ PostgreSQL data is stored in a Docker named volume (`postgres_data`). If the hos
 Recommended periodic backups:
 
 ```bash
-docker exec ai_robotics_news_bot-postgres-1 pg_dump -U admin newsbot > backup_newsbot.sql
-docker exec ai_robotics_news_bot-postgres-1 pg_dump -U admin prefect > backup_prefect.sql
+docker exec ai_robotics_news_bot-postgres-1 pg_dump -U prefect newsbot > backup_newsbot.sql
+docker exec ai_robotics_news_bot-postgres-1 pg_dump -U prefect prefect > backup_prefect.sql
 ```
 
 ---
