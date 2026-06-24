@@ -17,6 +17,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 _TELEGRAM_API_BASE = "https://api.telegram.org"
+_CHANNEL_URL = "https://t.me/robotics_ai_news"
 
 # ---------------------------------------------------------------------------
 # Category → emoji mapping
@@ -72,13 +73,24 @@ def format_article_message(article: ArticleToPublish) -> str:
     """
     Format an article as a Telegram HTML message.
 
-    Pattern: ``{emoji} <b>Category</b>\n\nTitle\n\nURL``
-    The bare URL triggers Telegram's link-preview. Category and title are HTML-escaped.
+    Pattern:
+        {emoji} <b>Category</b>
+
+        Title
+
+        <a href="URL">Read full article</a>
+
+        <a href="channel">@robotics_ai_news</a>
     """
     emoji = CATEGORY_EMOJI.get(article.category, _DEFAULT_EMOJI)
     safe_category = html.escape(article.category)
     safe_title = html.escape(article.title)
-    return f"{emoji} <b>{safe_category}</b>\n\n{safe_title}\n\n{article.link}"
+    return (
+        f"{emoji} <b>{safe_category}</b>\n\n"
+        f"{safe_title}\n\n"
+        f'<a href="{article.link}">Read full article</a>\n\n'
+        f'<a href="{_CHANNEL_URL}">@robotics_ai_news</a>'
+    )
 
 
 # ---------------------------------------------------------------------------
