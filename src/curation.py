@@ -23,7 +23,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import List, Sequence
 from openai import OpenAI, OpenAIError
 
 # Keep this list in sync with config/prompts/categorization.md
@@ -66,14 +66,17 @@ def categorize_titles_via_openrouter(
     template_path: Path,
     titles: Sequence[str],
     temperature: float = 0.0,
-    base_url: str = "https://openrouter.ai/api/v1",
+    base_url: str,
 ) -> CategorizationResult:
     """Return exactly one primary category per title (same order)."""
     prompt = build_categorization_prompt(template_path=template_path, titles=titles)
 
-    # TODO: Implement OpenRouter call (OpenAI-compatible) and get response text.
     raw_text = _call_openrouter(
-        api_key=api_key, model=model, prompt=prompt, temperature=temperature
+        api_key=api_key,
+        model=model,
+        prompt=prompt,
+        temperature=temperature,
+        base_url=base_url,
     )
 
     categories = _parse_and_validate_categories(raw_text, titles)
@@ -83,11 +86,11 @@ def categorize_titles_via_openrouter(
 
 
 def _call_openrouter(
-    *, api_key: str, model: str, prompt: str, temperature: float
+    *, api_key: str, model: str, prompt: str, temperature: float, base_url: str
 ) -> str:
     """Call OpenRouter via the OpenAI-compatible SDK and return response text."""
     client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
+        base_url=base_url,
         api_key=api_key,
     )
 
@@ -229,6 +232,7 @@ def curate_articles_via_openrouter(
     recent_context: Sequence[dict],
     max_selected: int,
     temperature: float = 0.0,
+    base_url: str,
 ) -> CurationResult:
     """
     Call OpenRouter to select articles for publication.
@@ -250,7 +254,11 @@ def curate_articles_via_openrouter(
     )
 
     raw_text = _call_openrouter(
-        api_key=api_key, model=model, prompt=prompt, temperature=temperature
+        api_key=api_key,
+        model=model,
+        prompt=prompt,
+        temperature=temperature,
+        base_url=base_url,
     )
 
     selected_ids = _parse_and_validate_selected_ids(

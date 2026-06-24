@@ -32,23 +32,32 @@ logger = logging.getLogger(__name__)
 
 
 class EnvSettings(BaseSettings):
-    """
-    Runtime settings sourced from environment variables.
+    """Environment variables (secrets + paths)."""
 
-    In docker-compose worker, these are injected as:
-      SETTINGS_PATH, SOURCES_WHITELIST_PATH, LAST_NEWS_PATH, PROMPTS_DIR, NEWSDATA_API_KEY
-    """
-
-    model_config = SettingsConfigDict(extra="ignore")
-
+    postgres_host: str
+    postgres_port: int
+    postgres_user: str
+    postgres_password: SecretStr
+    postgres_db: str
+    openrouter_api_key: SecretStr
+    telegram_bot_token: SecretStr
+    telegram_channel_id: str
+    newsdata_api_key: SecretStr
+    config_dir: Path
+    data_dir: Path
     settings_path: Path
     sources_whitelist_path: Path
     last_news_path: Path
+    to_publish_path: Path
     categorization_prompt_path: Path
     curation_prompt_path: Path
-    data_dir: Path
-    newsdata_api_key: SecretStr
-    openrouter_api_key: SecretStr
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 # ----------------------------
@@ -98,6 +107,7 @@ class LLMSettings(BaseModel):
 
     categorization_model: str
     curation_model: str
+    openrouter_base_url: str
 
     categorization: CategorizationSettings
     curation: CurationSettings

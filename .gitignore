@@ -2,3 +2,4 @@
 **/sandbox/
 __pycache__
 data/last_news.json
+data/to_publish.json

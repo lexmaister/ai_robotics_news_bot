@@ -37,10 +37,11 @@ from src.db import (
     insert_or_skip_article,
     update_category,
 )
+from openai import OpenAIError
+
 from src.curation import (
     categorize_titles_via_openrouter,
     curate_articles_via_openrouter,
-    OpenAIError,
 )
 
 
@@ -172,10 +173,18 @@ def insert_to_db_task(articles: list[dict], collected_dt: str) -> dict:
     conn = connect(cfg)
     try:
         for a in articles:
+            title = a.get("title") or ""
+            link = a.get("link") or ""
+            if not title or not link:
+                log.warning(
+                    "Skipping article with missing title/link: %s", a.get("article_id")
+                )
+                skipped += 1
+                continue
             inserted, article_id = insert_or_skip_article(
                 conn,
-                title=a.get("title"),
-                link=a.get("link"),
+                title=title,
+                link=link,
                 pub_date_raw=a.get("pubDate"),
                 request_domain=a.get("request_domain"),
                 request_query_name=a.get("request_query_name"),
@@ -375,6 +384,7 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
             recent_context=context_dicts,
             max_selected=int(cur_cfg.max_selected),
             temperature=float(cur_cfg.temperature),
+            base_url=settings.llm.openrouter_base_url,
         )
 
         log.info(
@@ -390,34 +400,32 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
                 "id": cid,
                 "title": candidates_by_id[cid].title,
                 "category": candidates_by_id[cid].category,
+                "link": candidates_by_id[cid].link,
             }
             for cid in result.selected_ids
         ]
 
-        to_publish = {
+        # Write to to_publish.json
+        payload = {
             "curated_dt": datetime.now(timezone.utc).isoformat(),
             "articles": articles_out,
         }
-
-        to_publish_path = Path(env.data_dir) / "to_publish.json"
-        to_publish_path.parent.mkdir(parents=True, exist_ok=True)
-        to_publish_path.write_text(
-            json.dumps(to_publish, indent=2, ensure_ascii=False),
-            encoding="utf-8",
+        env.to_publish_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
         log.info(
-            "Curation complete: candidates=%s selected=%s output=%s",
+            "Curation complete: candidates=%d, selected=%d, output=%s",
             len(candidates),
             len(result.selected_ids),
-            to_publish_path,
+            env.to_publish_path,
         )
 
         return {
             "status": "ok",
             "candidates": len(candidates),
             "selected": len(result.selected_ids),
-            "output_path": str(to_publish_path),
+            "output_path": str(env.to_publish_path),
         }
 
     except OpenAIError as exc:

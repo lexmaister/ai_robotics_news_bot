@@ -97,7 +97,7 @@ services:
       dockerfile: Dockerfile
     profiles: [worker]
     container_name: news_worker
-    command: prefect worker start --pool default-agent-pool --type process
+    command: sh -c "mkdir -p /app/data && prefect worker start --pool default-agent-pool --type process"
     environment:
       PREFECT_API_URL: "http://prefect-server:4200/api"
       POSTGRES_HOST: postgres
@@ -115,6 +115,7 @@ services:
       SETTINGS_PATH: /app/config/settings.yml
       SOURCES_WHITELIST_PATH: /app/config/sources_whitelist.yml
       LAST_NEWS_PATH: /app/data/last_news.json
+      TO_PUBLISH_PATH: /app/data/to_publish.json
       CATEGORIZATION_PROMPT_PATH: /app/config/prompts/categorization.md
       CURATION_PROMPT_PATH: /app/config/prompts/curation.md
     # overwrite Dockerfile's settings for developing

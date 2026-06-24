@@ -28,4 +28,4 @@ COPY src/ ./src/
 COPY flows/ ./flows/
 
 # Default command: start Prefect worker connecting to the work pool
-CMD ["prefect", "worker", "start", "--pool", "news-bot-pool"]
+CMD ["prefect", "worker", "start", "--pool", "default-agent-pool"]

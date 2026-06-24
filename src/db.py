@@ -286,6 +286,7 @@ class ArticleCandidate:
     id: int
     title: str
     category: str
+    link: str
 
 
 @dataclass(frozen=True)
@@ -297,7 +298,7 @@ class PublishedContext:
 
 
 SELECT_CANDIDATES_FOR_CURATION_SQL = """
-SELECT id, title, category
+SELECT id, title, category, link
 FROM articles
 WHERE category IS NOT NULL
   AND publicated = FALSE
@@ -331,7 +332,9 @@ def fetch_candidates_for_curation(
         rows = cur.fetchall() or []
 
     return [
-        ArticleCandidate(id=int(r[0]), title=str(r[1]), category=str(r[2]))
+        ArticleCandidate(
+            id=int(r[0]), title=str(r[1]), category=str(r[2]), link=str(r[3])
+        )
         for r in rows
     ]
 

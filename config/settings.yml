@@ -109,6 +109,8 @@ llm:
   categorization_model: "nvidia/nemotron-nano-9b-v2:free"
   # Higher-quality model used for final selection + summarization (curation)
   curation_model: "nvidia/nemotron-3-ultra-550b-a55b:free"
+  # OpenRouter API base URL (OpenAI-compatible endpoint)
+  openrouter_base_url: "https://openrouter.ai/api/v1"
   # ------------------------------------------------------------------------- #
   # Task 4: Categorize backlog (uncategorized titles) — operational knobs
   #
