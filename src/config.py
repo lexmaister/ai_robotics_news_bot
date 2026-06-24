@@ -102,7 +102,6 @@ class CurationSettings(BaseModel):
     max_selected: int = Field(gt=0)
     rag_context_size: int = Field(gt=0)
     temperature: float = Field(ge=0.0, le=1.0)
-    max_tokens: int = Field(gt=0)
 
 
 class LLMSettings(BaseModel):

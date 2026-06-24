@@ -412,7 +412,6 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
             max_selected=int(cur_cfg.max_selected),
             temperature=float(cur_cfg.temperature),
             base_url=settings.llm.openrouter_base_url,
-            max_tokens=int(cur_cfg.max_tokens),
             timeout=float(settings.llm.timeout),
         )
 

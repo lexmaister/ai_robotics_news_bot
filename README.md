@@ -151,7 +151,6 @@ The bot uses two models with different cost/quality tradeoffs:
 | `llm.curation.batch_size` | Max candidate articles fetched for task 5 |
 | `llm.curation.rag_context_size` | Recently published articles used as diversity context |
 | `llm.curation.max_selected` | Max articles posted per session |
-| `llm.curation.max_tokens` | Hard cap on curation LLM response length |
 
 ## Quick Start
 

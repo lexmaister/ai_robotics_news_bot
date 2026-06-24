@@ -104,16 +104,17 @@ def _call_openrouter(
     timeout: float,
 ) -> str:
     """
-    Call OpenRouter via the OpenAI-compatible SDK and return response text.
+    Call OpenRouter via the OpenAI-compatible SDK using explicit streaming.
 
-    stream is NOT set explicitly. Sending "stream": false in the request body
-    causes some free-tier models on OpenRouter (observed: nemotron-nano) to return
-    null/empty content. The SDK default is already non-streaming. If a model
-    returns SSE format anyway, the SDK raises JSONDecodeError when parsing the
-    response body — caught below and re-raised as OpenAIError to halt the flow.
+    Why streaming=True:
+    - OpenRouter guarantees SSE streaming works for every model.
+    - Non-streaming (the default) is unreliable on free-tier: some models return
+      SSE format anyway (causes JSONDecodeError or choices=None in the SDK),
+      others return null content when "stream": false is sent explicitly.
+    - With stream=True the SDK handles SSE parsing internally; we just collect
+      the content delta chunks and join them. This works uniformly for all models.
 
-    max_tokens caps response length to prevent network-level truncation on
-    long generations from verbose models.
+    max_tokens caps response length to prevent excessively long generations.
     """
     client = OpenAI(
         base_url=base_url,
@@ -131,75 +132,64 @@ def _call_openrouter(
             {"role": "user", "content": prompt},
         ],
         "temperature": temperature,
-        # NOTE: stream=False is intentionally NOT set here.
-        # Explicitly sending "stream": false in the request body causes some
-        # OpenRouter free-tier models (e.g. nemotron-nano) to return null content.
-        # The SDK default is non-streaming; we rely on the json.JSONDecodeError
-        # handler below to catch any model that returns SSE format anyway.
+        "stream": True,
     }
     if max_tokens is not None:
         create_kwargs["max_tokens"] = max_tokens
 
     try:
-        resp = client.chat.completions.create(**create_kwargs)
+        stream = client.chat.completions.create(**create_kwargs)
+        content_parts: list[str] = []
+        finish_reason: str | None = None
+        choice_error = None
+
+        for chunk in stream:
+            if not chunk.choices:
+                # Final usage-only chunk (empty choices array) — safe to skip.
+                continue
+            choice = chunk.choices[0]
+
+            # Per OpenRouter spec, streaming choices may carry error metadata.
+            choice_error = getattr(choice, "error", None)
+            if choice_error:
+                break
+
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+
+            delta_content = getattr(choice.delta, "content", None)
+            if delta_content:
+                content_parts.append(delta_content)
+
     except OpenAIError:
         raise
-    except json.JSONDecodeError as exc:
-        # The OpenAI SDK failed to parse the raw HTTP response body from OpenRouter.
-        # Most common cause: OpenRouter returned SSE/streaming format on a non-streaming
-        # request (observed on some :free tier models), or the response was truncated
-        # by a network timeout before the JSON was complete.
-        raise OpenAIError(
-            f"OpenRouter HTTP response is not valid JSON "
-            f"(streaming leak or truncated response): {exc}"
-        ) from exc
     except Exception as exc:
         raise OpenAIError(
             f"Unexpected error calling OpenRouter: {type(exc).__name__}: {exc}"
         ) from exc
 
-    # Guard against malformed responses from OpenRouter free-tier models.
-    # Two observed failure modes when SSE/streaming leaks into a non-streaming call:
-    #   1. SDK raises JSONDecodeError (caught above) — clean path.
-    #   2. SDK partially parses the SSE body and produces a ChatCompletion object
-    #      with choices=None or choices=[] — causes TypeError on choices[0] access.
-    if not resp.choices:
-        raise OpenAIError(
-            f"OpenRouter returned a response with no choices "
-            f"(possible SSE format leak or empty response). model={model!r}"
-        )
-
-    choice = resp.choices[0]
-
-    # Per OpenRouter spec, NonStreamingChoice carries an optional error field
-    # (code + message) for provider-level failures. Check it before content.
-    choice_error = getattr(choice, "error", None)
     if choice_error:
-        code = getattr(choice_error, "code", None) or getattr(
-            choice_error, "get", lambda k, d=None: d
-        )("code")
-        msg = getattr(choice_error, "message", None) or getattr(
-            choice_error, "get", lambda k, d=None: d
-        )("message")
+        code = getattr(choice_error, "code", None) or (
+            choice_error.get("code") if isinstance(choice_error, dict) else None
+        )
+        msg = getattr(choice_error, "message", None) or (
+            choice_error.get("message") if isinstance(choice_error, dict) else None
+        )
         raise OpenAIError(
-            f"OpenRouter provider error in choice. "
+            f"OpenRouter provider error in streaming chunk. "
             f"model={model!r} error_code={code!r} error_message={msg!r}"
         )
 
-    content = choice.message.content
-    finish_reason = choice.finish_reason
+    content = "".join(content_parts).strip()
 
-    if not content or not content.strip():
-        # Empty/null content: model overloaded, rate-limited, content-filtered,
-        # or finish_reason="length" with nothing written.
-        # Raise OpenAIError to halt the flow — must NOT reach the ValueError /
-        # poison-pill path, which would silently mark the backlog as "Unrecognized".
+    if not content:
+        # Empty stream: model overloaded, rate-limited, or content-filtered.
         raise OpenAIError(
-            f"OpenRouter returned empty content. "
+            f"OpenRouter returned empty streaming content. "
             f"model={model!r} finish_reason={finish_reason!r}"
         )
 
-    return content.strip()
+    return content
 
 
 def _parse_and_validate_categories(raw_text: str, titles: Sequence[str]) -> List[str]:
@@ -289,6 +279,114 @@ def _is_title_case_one_or_two_words(s: str) -> bool:
 # Task 5: Article curation
 # ---------------------------------------------------------------------------
 
+# Tool definition used to force structured output from the curation model.
+# Tool calling bypasses free-text generation entirely — the model fills in
+# typed function arguments, so preamble text, reasoning traces, and SSE
+# format issues are all irrelevant. The response is always a structured dict.
+_SELECT_ARTICLES_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "select_articles",
+        "description": "Select the IDs of the best articles to publish to the Telegram channel.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "selected_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "IDs of the selected articles, in any order.",
+                },
+            },
+            "required": ["selected_ids"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def _call_openrouter_tool(
+    *,
+    api_key: str,
+    model: str,
+    prompt: str,
+    temperature: float,
+    base_url: str,
+    tool: dict,
+    timeout: float,
+) -> str:
+    """
+    Call OpenRouter using function/tool calling and return the raw tool-argument JSON.
+
+    Tool calling forces the model to emit structured JSON arguments directly,
+    bypassing free-text generation entirely. This eliminates preamble text,
+    SSE format issues, and reasoning traces that large models (e.g. nemotron-ultra)
+    may prepend before the actual output. The response is always a well-formed
+    JSON object matching the declared tool schema.
+
+    Returns the raw arguments JSON string, e.g. '{"selected_ids": [42, 17, 93]}'.
+    """
+    client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+    tool_name = tool["function"]["name"]
+
+    try:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            tools=[tool],
+            tool_choice={"type": "function", "function": {"name": tool_name}},
+            stream=True,
+        )
+
+        args_parts: list[str] = []
+        finish_reason: str | None = None
+        choice_error = None
+
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+
+            choice_error = getattr(choice, "error", None)
+            if choice_error:
+                break
+
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+
+            if choice.delta.tool_calls:
+                for tc in choice.delta.tool_calls:
+                    if tc.function and tc.function.arguments:
+                        args_parts.append(tc.function.arguments)
+
+    except OpenAIError:
+        raise
+    except Exception as exc:
+        raise OpenAIError(
+            f"Unexpected error calling OpenRouter with tool: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    if choice_error:
+        code = getattr(choice_error, "code", None) or (
+            choice_error.get("code") if isinstance(choice_error, dict) else None
+        )
+        msg = getattr(choice_error, "message", None) or (
+            choice_error.get("message") if isinstance(choice_error, dict) else None
+        )
+        raise OpenAIError(
+            f"OpenRouter provider error in tool streaming chunk. "
+            f"model={model!r} error_code={code!r} error_message={msg!r}"
+        )
+
+    args_json = "".join(args_parts).strip()
+    if not args_json:
+        raise OpenAIError(
+            f"OpenRouter returned empty tool call arguments. "
+            f"model={model!r} finish_reason={finish_reason!r}"
+        )
+
+    return args_json
+
 
 @dataclass(frozen=True)
 class CurationResult:
@@ -325,18 +423,21 @@ def curate_articles_via_openrouter(
     max_selected: int,
     temperature: float,
     base_url: str,
-    max_tokens: int,
     timeout: float,
 ) -> CurationResult:
     """
-    Call OpenRouter to select articles for publication.
+    Call OpenRouter to select articles for publication via tool/function calling.
+
+    Using tool calling instead of plain text generation ensures the model always
+    returns a typed {"selected_ids": [...]} object regardless of model size or
+    reasoning verbosity — no preamble stripping or regex extraction needed.
 
     Candidates must be dicts with keys: "id" (int), "title" (str), "category" (str).
     Recent context must be dicts with keys: "title" (str), "category" (str).
 
     Raises:
         OpenAIError: API unavailable, rate-limited, or auth failure — caller should HALT.
-        ValueError:  Invalid JSON output or IDs outside the candidate list — caller should HALT.
+        ValueError:  Invalid tool output or IDs outside the candidate list — caller should HALT.
     """
     candidate_ids: set[int] = {int(c["id"]) for c in candidates}
 
@@ -347,48 +448,71 @@ def curate_articles_via_openrouter(
         max_selected=max_selected,
     )
 
-    raw_text = _call_openrouter(
+    raw_args = _call_openrouter_tool(
         api_key=api_key,
         model=model,
         prompt=prompt,
         temperature=temperature,
         base_url=base_url,
-        max_tokens=max_tokens,
+        tool=_SELECT_ARTICLES_TOOL,
         timeout=timeout,
     )
 
     selected_ids = _parse_and_validate_selected_ids(
-        raw_text, candidate_ids=candidate_ids
+        raw_args, candidate_ids=candidate_ids
     )
-    return CurationResult(selected_ids=selected_ids, raw_text=raw_text)
+    return CurationResult(selected_ids=selected_ids, raw_text=raw_args)
 
 
 def _parse_and_validate_selected_ids(
-    raw_text: str, *, candidate_ids: set[int]
+    raw_args: str, *, candidate_ids: set[int]
 ) -> list[int]:
     """
-    Parse LLM output and validate it is a JSON array of integers within candidate_ids.
+    Parse select_articles tool call arguments and validate all IDs.
 
-    Strips markdown code fences if the model wraps the output.
-    Raises ValueError on any violation.
+    Expected input (from _call_openrouter_tool):
+        '{"selected_ids": [42, 17, 93]}'
+
+    Raises ValueError on any structural or semantic violation.
     """
-    text = raw_text.strip()
-
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
-    if text.startswith("```"):
-        lines = text.splitlines()
-        inner = (
-            lines[1:-1] if len(lines) > 2 and lines[-1].strip() == "```" else lines[1:]
-        )
-        text = "\n".join(inner).strip()
-
     try:
-        parsed = json.loads(text)
+        args = json.loads(raw_args)
     except Exception as exc:
         raise ValueError(
-            f"Curation output is not valid JSON: {exc}. Raw: {raw_text[:500]}"
+            f"Tool call arguments are not valid JSON: {exc}. Raw: {raw_args[:500]}"
         ) from exc
 
+    if not isinstance(args, dict):
+        raise ValueError(
+            f"Tool call arguments must be a JSON object, got {type(args).__name__}. "
+            f"Raw: {raw_args[:200]}"
+        )
+
+    ids_raw = args.get("selected_ids")
+    if ids_raw is None:
+        raise ValueError(
+            f"Tool call arguments missing 'selected_ids' key. Raw: {raw_args[:200]}"
+        )
+    if not isinstance(ids_raw, list):
+        raise ValueError(
+            f"'selected_ids' must be a JSON array, got {type(ids_raw).__name__}"
+        )
+
+    selected: list[int] = []
+    for i, item in enumerate(ids_raw):
+        if not isinstance(item, int):
+            raise ValueError(
+                f"Selected ID at index {i} must be an integer, "
+                f"got {type(item).__name__}: {item!r}"
+            )
+        if item not in candidate_ids:
+            raise ValueError(
+                f"Selected ID {item} (index {i}) is not in the candidate list "
+                f"sent to the model."
+            )
+        selected.append(item)
+
+    return selected
     if not isinstance(parsed, list):
         raise ValueError(
             f"Curation output must be a JSON array, got {type(parsed).__name__}. Raw: {raw_text[:200]}"
