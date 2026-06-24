@@ -42,6 +42,7 @@ class EnvSettings(BaseSettings):
     openrouter_api_key: SecretStr
     telegram_bot_token: SecretStr
     telegram_channel_id: str
+    telegram_proxy_url: str | None = None
     newsdata_api_key: SecretStr
     config_dir: Path
     data_dir: Path

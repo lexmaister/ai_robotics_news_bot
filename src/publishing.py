@@ -92,6 +92,7 @@ def send_telegram_message(
     channel_id: str,
     text: str,
     timeout: float = 30.0,
+    proxy_url: str | None = None,
 ) -> None:
     """
     POST a single message to a Telegram channel via the Bot HTTP API.
@@ -101,6 +102,7 @@ def send_telegram_message(
         channel_id: Channel username ("@mychannel") or numeric id ("-1001234567890").
         text:       HTML-formatted message text.
         timeout:    Request timeout in seconds.
+        proxy_url:  Optional proxy URL to use.
 
     Raises:
         TelegramPublishError: on any HTTP error or Telegram API-level error.
@@ -112,8 +114,13 @@ def send_telegram_message(
         "parse_mode": "HTML",
     }
 
+    client_kwargs: dict = {}
+    if proxy_url:
+        client_kwargs["proxy"] = proxy_url
+
     try:
-        response = httpx.post(url, json=payload, timeout=timeout)
+        with httpx.Client(**client_kwargs) as client:
+            response = client.post(url, json=payload, timeout=timeout)
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise TelegramPublishError(

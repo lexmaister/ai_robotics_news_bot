@@ -1,0 +1,16 @@
+# docker-compose.vpn.yml
+# Compose override: attaches the worker to the shared_vpn external network
+# while keeping it on the default compose network for internal comms.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.vpn.yml --profile worker up -d
+services:
+  worker:
+    networks:
+      - default
+      - shared_vpn
+
+networks:
+  shared_vpn:
+    external: true
+    name: shared_vpn

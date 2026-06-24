@@ -523,6 +523,7 @@ def publish_to_telegram_task(curation: dict[str, Any]) -> dict[str, Any]:
 
     bot_token = env.telegram_bot_token.get_secret_value()
     channel_id = env.telegram_channel_id
+    proxy_url = env.telegram_proxy_url or None
 
     db_cfg = _db_config_from_env()
     conn = connect(db_cfg)
@@ -537,6 +538,7 @@ def publish_to_telegram_task(curation: dict[str, Any]) -> dict[str, Any]:
                 bot_token=bot_token,
                 channel_id=channel_id,
                 text=msg,
+                proxy_url=proxy_url,
             )
 
             # Mark in DB immediately after a successful post so that even if

@@ -228,6 +228,21 @@ docker compose --profile server --profile worker down
 docker compose --profile server --profile worker down -v
 ```
 
+### 5a. (Optional) Start worker with external network for outbound traffic
+
+When outbound API calls must be routed through a specific network interface,
+the worker can join a pre-existing Docker network (`shared_vpn`) **in addition
+to** the default compose network it uses for internal communication with
+`prefect-server` and `postgres`.
+
+```bash
+# Create the shared network once on the host (skip if it already exists)
+docker network create shared_vpn
+
+# Start worker attached to both the compose default network and shared_vpn
+docker compose -f docker-compose.yml -f docker-compose.vpn.yml --profile worker up -d
+```
+
 ---
 
 ## Architecture Decisions
