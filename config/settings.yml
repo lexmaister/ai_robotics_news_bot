@@ -167,7 +167,7 @@ llm:
   # dimensions must match the VECTOR(N) column declared in db/schema.sql.
   # The model is queried via OpenRouter's OpenAI-compatible /embeddings endpoint.
   # --------------------------------------------------------------------------- #
-  embedding_model: "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+  embedding_model: "qwen/qwen3-embedding-8b"
   embedding:
     dimensions: 1536                 # must match VECTOR(1536) in db/schema.sql
     batch_size: 50                   # published articles to embed per flow run

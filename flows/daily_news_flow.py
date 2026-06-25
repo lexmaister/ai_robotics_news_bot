@@ -10,7 +10,7 @@ Stages (as Prefect tasks):
 4) Task 4: Categorize uncategorized titles backlog via OpenRouter (strict JSON) and update articles.category.
 5) Task 5: Curate categorized+unpublicated articles via OpenRouter; write /app/data/to_publish.json.
 6) Task 6: Publish curated articles to Telegram channel; mark each as publicated=TRUE in DB immediately after posting.
-7) Task 7: Embed published article titles via OpenRouter (nvidia/llama-nemotron-embed-vl-1b-v2:free); write
+7) Task 7: Embed published article titles via OpenRouter (qwen/qwen3-embedding-8b); write
    1536-dim vectors to articles.embedding (pgvector VECTOR(1536)) for the backlog of unembedded published rows.
 
 Design notes:

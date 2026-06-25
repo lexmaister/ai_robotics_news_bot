@@ -79,7 +79,7 @@ The bot uses three models with different cost/quality tradeoffs:
 
 - **Categorization (Task 4, high volume):** A fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) processes large batches of raw titles and assigns taxonomy labels (e.g., `"AI Policy"`, `"Humanoid Robots"`).
 - **Curation (Task 5, low volume):** A higher-quality model (e.g., `nvidia/nemotron-3-ultra-550b`) evaluates the categorized backlog and selects the best articles for publication, using recently published articles as diversity context.
-- **Embedding (Task 7, backlog):** A dedicated embedding model (`nvidia/llama-nemotron-embed-vl-1b-v2:free`) converts published article titles into 1536-dim float vectors stored in the `articles.embedding` pgvector column. Dimension is configurable via `llm.embedding.dimensions` and must match the `VECTOR(N)` declaration in `db/schema.sql`.
+- **Embedding (Task 7, backlog):** A dedicated embedding model (`qwen/qwen3-embedding-8b`) converts published article titles into 1536-dim float vectors stored in the `articles.embedding` pgvector column. The model's native 4096-dim output is truncated to 1536 and L2-normalized in Python to match the `VECTOR(1536)` column. Dimension is configurable via `llm.embedding.dimensions` and must match the `VECTOR(N)` declaration in `db/schema.sql`.
 
 ## Data Flow
 
