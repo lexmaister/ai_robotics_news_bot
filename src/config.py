@@ -103,16 +103,25 @@ class CurationSettings(BaseModel):
     temperature: float = Field(ge=0.0, le=1.0)
 
 
+class EmbeddingSettings(BaseModel):
+    """Operational knobs for embedding task."""
+
+    dimensions: int = Field(gt=0)
+    batch_size: int = Field(gt=0)
+
+
 class LLMSettings(BaseModel):
-    """LLM parameters used for titles categorization and curation."""
+    """LLM parameters used for titles categorization, curation, and embedding."""
 
     categorization_model: str
     curation_model: str
+    embedding_model: str
     openrouter_base_url: str
     timeout: float = Field(gt=0)
 
     categorization: CategorizationSettings
     curation: CurationSettings
+    embedding: EmbeddingSettings
 
 
 class QuerySettings(BaseModel):

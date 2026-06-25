@@ -33,10 +33,11 @@ ai_robotics_news_bot/
 │   ├── db.py                     # DB connection and queries
 │   ├── ingestion.py              # newsdata.io fetcher
 │   ├── curation.py               # LLM logic: categorization and curation (OpenRouter)
+│   ├── embedding.py              # Title embedding via OpenRouter embeddings API
 │   └── publishing.py             # Telegram message formatting and posting
 │
 ├── flows/                        # Prefect flow definitions
-│   ├── daily_news_flow.py        # Main production flow (6 tasks)
+│   ├── daily_news_flow.py        # Main production flow (7 tasks)
 │   └── start_flows.py            # Bootstrap: validates config and registers deployments
 │
 └── data/                         # Runtime data (gitignored)
@@ -54,7 +55,7 @@ To operate entirely on the **Newsdata.io Free Tier** (200 credits/day), the bot 
 * **State Management:** The exact state of the last fetch is saved locally in `data/last_news.json` so the pipeline can gracefully resume without fetching duplicate pages.
 * **Database Deduplication:** Handled safely via PostgreSQL `UNIQUE` constraints and `ON CONFLICT` skips.
 
-## Daily News Flow — 6 Tasks
+## Daily News Flow — 7 Tasks
 
 Each Prefect run executes the following tasks sequentially:
 
@@ -66,15 +67,19 @@ Each Prefect run executes the following tasks sequentially:
 | 4 | `task4-categorize-backlog` | Sends uncategorized titles to OpenRouter in batches; writes `category` column |
 | 5 | `task5-curate-articles` | Asks OpenRouter to select the best articles for this session; writes `to_publish.json` |
 | 6 | `task6-publish-to-telegram` | Posts each selected article to the Telegram channel; marks `publicated=TRUE` in DB |
+| 7 | `task7-embed-published` | Embeds titles of all published articles that lack a vector; writes 1536-dim vectors to `articles.embedding` (pgvector) |
 
 **Duplicate publication protection:** Task 6 is gated on Task 5's in-session result — a leftover `to_publish.json` from a previous run is never used. After each successful post, the article is immediately marked `publicated=TRUE` so Task 5 never selects it again.
 
+**Embedding backlog:** Task 7 runs after Task 6 and processes all `publicated=TRUE` rows that still have `embedding IS NULL` (up to `llm.embedding.batch_size` per run), so articles published in the current session are included on the same run.
+
 ## LLM Models (OpenRouter)
 
-The bot uses two models with different cost/quality tradeoffs:
+The bot uses three models with different cost/quality tradeoffs:
 
 - **Categorization (Task 4, high volume):** A fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) processes large batches of raw titles and assigns taxonomy labels (e.g., `"AI Policy"`, `"Humanoid Robots"`).
 - **Curation (Task 5, low volume):** A higher-quality model (e.g., `nvidia/nemotron-3-ultra-550b`) evaluates the categorized backlog and selects the best articles for publication, using recently published articles as diversity context.
+- **Embedding (Task 7, backlog):** A dedicated embedding model (`nvidia/llama-nemotron-embed-vl-1b-v2:free`) converts published article titles into 1536-dim float vectors stored in the `articles.embedding` pgvector column. Dimension is configurable via `llm.embedding.dimensions` and must match the `VECTOR(N)` declaration in `db/schema.sql`.
 
 ## Data Flow
 
@@ -134,6 +139,17 @@ The bot uses two models with different cost/quality tradeoffs:
               │ mark_publicated=TRUE (immediately after each post)
               ▼
      articles (publicated=TRUE)  →  excluded from future task5 candidates
+              │
+              ▼
+       ┌─────────────┐       OpenRouter  (embedding_model)
+       │  task7      │ ◄──────────────────────────────────
+       │    embed    │  POST /embeddings  → VECTOR(1536)
+       │  published  │  batch up to embedding.batch_size rows
+       └──────┬──────┘
+              │ UPDATE articles SET embedding=…
+              ▼
+     articles (embedding≠NULL)  →  ready for vector similarity search
+
 ```
 
 **Key config knobs** (all in `config/settings.yml`):
@@ -142,13 +158,15 @@ The bot uses two models with different cost/quality tradeoffs:
 |---|---|
 | `session.credits` | Max newsdata.io requests per run |
 | `session.domains_per_session` | Domains sampled per run |
-| `llm.timeout` | OpenRouter HTTP timeout (seconds), shared by tasks 4 & 5 |
+| `llm.timeout` | OpenRouter HTTP timeout (seconds), shared by all LLM tasks |
 | `llm.categorization.batch_size` | Titles sent to LLM per round in task 4 |
 | `llm.categorization.max_total_rounds` | Hard loop cap for task 4 |
 | `llm.categorization.poison_mode` | `"mark"` silently labels bad titles; `"fail"` halts the flow |
 | `llm.curation.batch_size` | Max candidate articles fetched for task 5 |
 | `llm.curation.rag_context_size` | Recently published articles used as diversity context |
 | `llm.curation.max_selected` | Max articles posted per session |
+| `llm.embedding.dimensions` | Vector size — must match `VECTOR(N)` in `db/schema.sql` (default: 1536) |
+| `llm.embedding.batch_size` | Max published articles embedded per run in task 7 |
 
 ## Quick Start
 
@@ -357,6 +375,12 @@ docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "S
 Quickly check the latest articles that were sent to the Telegram channel:
 ```bash
 docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT title, pub_date FROM articles WHERE publicated = TRUE ORDER BY pub_date DESC LIMIT 3;"
+```
+
+**Check Embedding Coverage**
+See how many published articles have been embedded versus still awaiting a vector:
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT (embedding IS NOT NULL) as has_embedding, COUNT(*) FROM articles WHERE publicated = TRUE GROUP BY has_embedding;"
 ```
 ---
 

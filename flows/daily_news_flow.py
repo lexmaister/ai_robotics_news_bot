@@ -10,6 +10,8 @@ Stages (as Prefect tasks):
 4) Task 4: Categorize uncategorized titles backlog via OpenRouter (strict JSON) and update articles.category.
 5) Task 5: Curate categorized+unpublicated articles via OpenRouter; write /app/data/to_publish.json.
 6) Task 6: Publish curated articles to Telegram channel; mark each as publicated=TRUE in DB immediately after posting.
+7) Task 7: Embed published article titles via OpenRouter (nvidia/llama-nemotron-embed-vl-1b-v2:free); write
+   1536-dim vectors to articles.embedding (pgvector VECTOR(1536)) for the backlog of unembedded published rows.
 
 Design notes:
 - No concurrency: tasks run sequentially.
@@ -34,11 +36,13 @@ from src.db import (
     DbConfig,
     connect,
     fetch_candidates_for_curation,
+    fetch_published_without_embedding,
     fetch_recent_published_context,
     fetch_titles_for_categorization,
     insert_or_skip_article,
     mark_publicated,
     update_category,
+    update_embedding,
 )
 from openai import OpenAIError
 
@@ -46,6 +50,7 @@ from src.curation import (
     categorize_titles_via_openrouter,
     curate_articles_via_openrouter,
 )
+from src.embedding import embed_titles_via_openrouter
 from src.publishing import (
     ArticleToPublish,
     TelegramPublishError,
@@ -578,6 +583,78 @@ def publish_to_telegram_task(curation: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@task(name="task7-embed-published")
+def embed_published_task(cfg: dict[str, Any]) -> dict[str, Any]:
+    """
+    Task 7: Embed published article titles via OpenRouter embeddings API.
+
+    Fetches up to `embedding.batch_size` published articles whose embedding
+    column is NULL, calls the embeddings endpoint, and writes 1536-dim vectors
+    back to articles.embedding (pgvector VECTOR(1536)).
+
+    Runs after Task 6 so that articles published in this session are included.
+    Processes a backlog from all past sessions — not only the current one.
+    """
+    log = get_run_logger()
+    settings = cfg["settings_obj"]
+    env = EnvSettings()
+
+    emb_cfg = settings.llm.embedding
+    batch_size = int(emb_cfg.batch_size)
+    dimensions = int(emb_cfg.dimensions)
+    model = str(settings.llm.embedding_model)
+
+    db_cfg = _db_config_from_env()
+    conn = connect(db_cfg)
+    embedded = 0
+
+    try:
+        rows = fetch_published_without_embedding(conn, limit=batch_size)
+        if not rows:
+            log.info("No published articles without embeddings. Skipping.")
+            return {"status": "skipped", "embedded": 0}
+
+        log.info(
+            "Fetched %s published articles for embedding. model=%s dimensions=%s",
+            len(rows),
+            model,
+            dimensions,
+        )
+
+        ids = [r.id for r in rows]
+        titles = [r.title for r in rows]
+
+        vectors = embed_titles_via_openrouter(
+            api_key=env.openrouter_api_key.get_secret_value(),
+            model=model,
+            titles=titles,
+            dimensions=dimensions,
+            base_url=settings.llm.openrouter_base_url,
+            timeout=float(settings.llm.timeout),
+        )
+
+        for article_id, vector in zip(ids, vectors):
+            update_embedding(conn, article_id=article_id, embedding=vector)
+            embedded += 1
+
+        conn.commit()
+        log.info("Embedding complete: embedded=%s model=%s", embedded, model)
+        return {"status": "ok", "embedded": embedded, "model": model}
+
+    except OpenAIError as exc:
+        log.error("Embedding API failure. Halting task. Error: %s", str(exc))
+        conn.rollback()
+        raise
+
+    except ValueError as exc:
+        log.error("Embedding validation failed. Halting task. Error: %s", str(exc))
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
 @flow(name="daily-news-flow")
 def daily_news_flow(skip_ingestion: bool = False, skip_categorization: bool = False) -> dict:
     """Main production flow entrypoint.
@@ -617,6 +694,7 @@ def daily_news_flow(skip_ingestion: bool = False, skip_categorization: bool = Fa
         categorization = categorize_backlog_task(cfg)
     curation = curate_articles_task(cfg)
     publication = publish_to_telegram_task(curation)
+    embedding = embed_published_task(cfg)
 
     return {
         "config": {
@@ -629,6 +707,7 @@ def daily_news_flow(skip_ingestion: bool = False, skip_categorization: bool = Fa
                         "settings_obj"
                     ].llm.categorization_model,
                     "curation_model": cfg["settings_obj"].llm.curation_model,
+                    "embedding_model": cfg["settings_obj"].llm.embedding_model,
                     "batch_size": cfg["settings_obj"].llm.categorization.batch_size,
                 },
                 "newsdata": {
@@ -653,6 +732,7 @@ def daily_news_flow(skip_ingestion: bool = False, skip_categorization: bool = Fa
         "categorization": categorization,
         "curation": curation,
         "publication": publication,
+        "embedding": embedding,
     }
 
 

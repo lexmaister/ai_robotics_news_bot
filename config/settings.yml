@@ -156,3 +156,19 @@ llm:
     rag_context_size: 20             # recently published articles for diversity context
     temperature: 0.0                 # deterministic selection
 
+  # --------------------------------------------------------------------------- #
+  # Task 7: Embed published titles — operational knobs
+  #
+  # How it works:
+  # - Fetch up to batch_size published articles whose embedding IS NULL.
+  # - Call OpenRouter embeddings API to produce vectors for each title.
+  # - Write vectors back to articles.embedding (VECTOR(1536)) in pgvector.
+  #
+  # dimensions must match the VECTOR(N) column declared in db/schema.sql.
+  # The model is queried via OpenRouter's OpenAI-compatible /embeddings endpoint.
+  # --------------------------------------------------------------------------- #
+  embedding_model: "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+  embedding:
+    dimensions: 1536                 # must match VECTOR(1536) in db/schema.sql
+    batch_size: 50                   # published articles to embed per flow run
+

@@ -270,3 +270,44 @@ def fetch_recent_published_context(
         rows = cur.fetchall() or []
 
     return [PublishedContext(title=str(r[0]), category=str(r[1])) for r in rows]
+
+
+# ---------- embedding queries ----------
+
+SELECT_PUBLISHED_WITHOUT_EMBEDDING_SQL = """
+SELECT id, title
+FROM articles
+WHERE publicated = TRUE
+  AND embedding IS NULL
+ORDER BY id DESC
+LIMIT %(limit)s;
+"""
+
+UPDATE_EMBEDDING_SQL = """
+UPDATE articles
+SET embedding = %(embedding)s::vector
+WHERE id = %(id)s;
+"""
+
+
+def fetch_published_without_embedding(
+    conn: PgConnection, *, limit: int
+) -> list[ArticleTitle]:
+    """Fetch up to `limit` published articles that have no embedding yet, newest first."""
+    if limit <= 0:
+        raise ValueError("limit must be > 0")
+
+    with conn.cursor() as cur:
+        cur.execute(SELECT_PUBLISHED_WITHOUT_EMBEDDING_SQL, {"limit": limit})
+        rows = cur.fetchall() or []
+
+    return [ArticleTitle(id=int(r[0]), title=str(r[1])) for r in rows]
+
+
+def update_embedding(
+    conn: PgConnection, *, article_id: int, embedding: list[float]
+) -> None:
+    """Write the embedding vector for a single published article."""
+    vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
+    with conn.cursor() as cur:
+        cur.execute(UPDATE_EMBEDDING_SQL, {"id": article_id, "embedding": vec_str})
