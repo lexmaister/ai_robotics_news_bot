@@ -85,10 +85,11 @@ def format_article_message(article: ArticleToPublish) -> str:
     emoji = CATEGORY_EMOJI.get(article.category, _DEFAULT_EMOJI)
     safe_category = html.escape(article.category)
     safe_title = html.escape(article.title)
+    safe_link = html.escape(article.link.strip())
     return (
         f"{emoji} <b>{safe_category}</b>\n\n"
         f"{safe_title}\n\n"
-        f'<a href="{article.link}">Read full article</a>\n\n'
+        f'<a href="{safe_link}">Read full article</a>\n\n'
         f'<a href="{_CHANNEL_URL}">@robotics_ai_news</a>'
     )
 
