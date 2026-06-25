@@ -68,10 +68,10 @@ groups:
         priority: 7
         categories: [hardware, AI, benchmarks]
         description: Hardware and AI industry reporting, technical reviews and benchmarks
-      - domain: ft.com
+      - domain: geekwire.com
         priority: 7
-        categories: [enterprise, policy, economics]
-        description: AI enterprise and policy analysis, financial journalism and economic impact
+        categories: [Enterprise AI, Markets, Hardware]
+        description: Tech business publication covering startups, venture capital, cloud, AI, and enterprise industry developments
       - domain: techbullion.com
         priority: 5
         categories: [startups, AI, fintech]
