@@ -20,7 +20,8 @@ ai_robotics_news_bot/
 │   ├── settings.yml              # Tunables: intervals, thresholds, model names
 │   └── prompts/                  # LLM prompt templates
 │       ├── curation.md
-│       └── categorization.md
+│       ├── categorization.md
+│       └── Analysis.md           # Weekly report narrative prompt
 │
 ├── db/
 │   ├── init/
@@ -34,10 +35,12 @@ ai_robotics_news_bot/
 │   ├── ingestion.py              # newsdata.io fetcher
 │   ├── curation.py               # LLM logic: categorization and curation (OpenRouter)
 │   ├── embedding.py              # Title embedding via OpenRouter embeddings API
+│   ├── analysis.py               # Weekly report: embedding clustering + LLM narrative
 │   └── publishing.py             # Telegram message formatting and posting
 │
 ├── flows/                        # Prefect flow definitions
 │   ├── daily_news_flow.py        # Main production flow (7 tasks)
+│   ├── report_flow.py            # Weekly report + cleanup flow (5 tasks)
 │   └── start_flows.py            # Bootstrap: validates config and registers deployments
 │
 └── data/                         # Runtime data (gitignored)
@@ -73,13 +76,42 @@ Each Prefect run executes the following tasks sequentially:
 
 **Embedding backlog:** Task 7 runs after Task 6 and processes all `publicated=TRUE` rows that still have `embedding IS NULL` (up to `llm.embedding.batch_size` per run), so articles published in the current session are included on the same run.
 
+---
+
+## Weekly Report Flow — 5 Tasks
+
+A **separate Prefect deployment** (`report-flow/weekly`) runs once per week and performs two responsibilities:
+
+1. **DB Cleanup** — deletes unpublished articles older than `orchestration.report_interval_days` days, reclaiming storage used by articles that were ingested but never selected for publication.
+2. **Trends Report** — clusters the embedding vectors of all published articles from the last `report_interval_days` days, then calls an LLM to generate a concise narrative digest, which is posted to the Telegram channel.
+
+| # | Task | What it does |
+|---|------|--------------|
+| 1 | `report-task1-load-config` | Loads and validates `settings.yml` and all env vars |
+| 2 | `report-task2-cleanup-db` | DELETEs `publicated=FALSE` rows older than N days; logs deleted count |
+| 3 | `report-task3-fetch-embeddings` | Fetches published articles with non-null embedding vectors for the last N days |
+| 4 | `report-task4-generate-report` | Clusters vectors (KMeans/MiniBatchKMeans), builds trend payload, calls `llm.analysis_model` to produce report text |
+| 5 | `report-task5-post-to-telegram` | Formats HTML message and posts the report to the Telegram channel |
+
+**Flow parameters** (configurable from Prefect UI or CLI):
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `skip_db_clean` | `False` | Skip Task 2 (run report only) |
+| `skip_report` | `False` | Skip Tasks 3–5 (run cleanup only) |
+
+**Clustering algorithm:** L2-normalised KMeans (≤ 500 articles) or MiniBatchKMeans (> 500 articles) from scikit-learn. Each cluster's representative titles are the articles geometrically closest to the centroid. Clusters smaller than `report.min_cluster_size` are filtered out before the LLM call.
+
+**Prompt template:** `config/prompts/Analysis.md` — rendered with cluster JSON, article count, lookback days, and optional top-sources block.
+
 ## LLM Models (OpenRouter)
 
-The bot uses three models with different cost/quality tradeoffs:
+The bot uses four models with different cost/quality tradeoffs:
 
 - **Categorization (Task 4, high volume):** A fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) processes large batches of raw titles and assigns taxonomy labels (e.g., `"AI Policy"`, `"Humanoid Robots"`).
 - **Curation (Task 5, low volume):** A higher-quality model (e.g., `nvidia/nemotron-3-ultra-550b`) evaluates the categorized backlog and selects the best articles for publication, using recently published articles as diversity context.
 - **Embedding (Task 7, backlog):** A dedicated embedding model (`qwen/qwen3-embedding-8b`) converts published article titles into 1536-dim float vectors stored in the `articles.embedding` pgvector column. The model's native 4096-dim output is truncated to 1536 and L2-normalized in Python to match the `VECTOR(1536)` column. Dimension is configurable via `llm.embedding.dimensions` and must match the `VECTOR(N)` declaration in `db/schema.sql`.
+- **Analysis (Report Task 4, weekly):** A capable free/cheap model (e.g., `poolside/laguna-m.1:free`) receives the clustered trend payload and writes a short Telegram-ready narrative digest. Configured via `llm.analysis_model` and `llm.analysis.*` knobs.
 
 ## Data Flow
 
@@ -156,6 +188,8 @@ The bot uses three models with different cost/quality tradeoffs:
 
 | Setting | Controls |
 |---|---|
+| `orchestration.runs_per_day` | Prefect daily ingestion schedule |
+| `orchestration.report_interval_days` | Cleanup age threshold + report lookback window (days) |
 | `session.credits` | Max newsdata.io requests per run |
 | `session.domains_per_session` | Domains sampled per run |
 | `llm.timeout` | OpenRouter HTTP timeout (seconds), shared by all LLM tasks |
@@ -167,6 +201,16 @@ The bot uses three models with different cost/quality tradeoffs:
 | `llm.curation.max_selected` | Max articles posted per session |
 | `llm.embedding.dimensions` | Vector size — must match `VECTOR(N)` in `db/schema.sql` (default: 1536) |
 | `llm.embedding.batch_size` | Max published articles embedded per run in task 7 |
+| `llm.analysis_model` | OpenRouter model for weekly report narrative (report task 4) |
+| `llm.analysis.temperature` | Sampling temperature for report LLM call |
+| `llm.analysis.timeout` | HTTP timeout override for report LLM call (seconds) |
+| `llm.analysis.max_output_chars` | Hard character cap applied in Python before posting |
+| `report.max_articles_to_analyze` | Max published articles fetched for clustering |
+| `report.max_clusters` | KMeans k (upper bound; actual clusters may be fewer) |
+| `report.min_cluster_size` | Clusters with fewer articles than this are excluded |
+| `report.max_titles_per_cluster` | Representative titles per cluster shown in LLM prompt |
+| `report.max_message_chars` | Telegram HTML message length limit (safety trim) |
+| `report.include_sources_summary` | Append top-5 source domains to LLM prompt |
 
 ## Quick Start
 
@@ -338,7 +382,13 @@ docker compose --profile worker restart
 # Run a flow manually
 docker exec -it news_worker python -m flows.daily_news_flow
 
-# Register/update Prefect deployment
+# Run the weekly report flow manually
+docker exec -it news_worker python -m flows.report_flow
+
+# Run cleanup only (skip report posting)
+docker exec -it news_worker python -c "from flows.report_flow import report_flow; report_flow(skip_report=True)"
+
+# Register/update ALL Prefect deployments (daily + weekly)
 docker exec -it news_worker python -m flows.start_flows
 
 # Check Prefect API health

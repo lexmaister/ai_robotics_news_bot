@@ -155,3 +155,56 @@ def send_telegram_message(
         result.get("result", {}).get("message_id"),
         channel_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Weekly report formatting
+# ---------------------------------------------------------------------------
+
+
+def format_weekly_report_message(report_text: str, *, max_chars: int = 4096) -> str:
+    """
+    Format the LLM-generated weekly report text for Telegram HTML mode.
+
+    Rules:
+    - The first non-empty line is wrapped in <b>…</b> to serve as the heading.
+    - All lines are HTML-escaped to prevent injection of raw tags.
+    - A channel footer link is appended.
+    - The total message is trimmed to max_chars if needed, cutting at the last
+      newline boundary to avoid mid-line truncation.
+
+    Args:
+        report_text: Plain-text report from the LLM (may contain newlines).
+        max_chars:   Maximum total character count of the returned HTML string.
+                     Telegram hard-limits messages to 4096 characters.
+
+    Returns:
+        HTML-formatted string ready to pass to send_telegram_message().
+    """
+    lines = report_text.strip().splitlines()
+    if not lines:
+        return html.escape("[No report content]")
+
+    formatted_lines: list[str] = []
+    for i, line in enumerate(lines):
+        escaped = html.escape(line)
+        if i == 0 and escaped.strip():
+            # Bold the heading line
+            formatted_lines.append(f"<b>{escaped}</b>")
+        else:
+            formatted_lines.append(escaped)
+
+    body = "\n".join(formatted_lines)
+    footer = f'\n\n<a href="{_CHANNEL_URL}">@robotics_ai_news</a>'
+    message = body + footer
+
+    if len(message) > max_chars:
+        # Preserve footer; trim body at last newline boundary
+        trim_to = max_chars - len(footer) - 3  # reserve room for "..."
+        trimmed_body = message[:trim_to]
+        last_nl = trimmed_body.rfind("\n")
+        if last_nl > 0:
+            trimmed_body = trimmed_body[:last_nl].rstrip()
+        message = trimmed_body + "..." + footer
+
+    return message

@@ -52,6 +52,7 @@ class EnvSettings(BaseSettings):
     to_publish_path: Path
     categorization_prompt_path: Path
     curation_prompt_path: Path
+    analysis_prompt_path: Path = Path("/app/config/prompts/Analysis.md")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -64,6 +65,13 @@ class EnvSettings(BaseSettings):
 # ----------------------------
 # settings.yml models (ingestion-related only)
 # ----------------------------
+
+
+class OrchestrationSettings(BaseModel):
+    """Prefect scheduler cadence settings."""
+
+    runs_per_day: int = Field(gt=0)
+    report_interval_days: int = Field(default=7, gt=0)
 
 
 class SessionSettings(BaseModel):
@@ -110,6 +118,14 @@ class EmbeddingSettings(BaseModel):
     batch_size: int = Field(gt=0)
 
 
+class LLMAnalysisSettings(BaseModel):
+    """Operational knobs for weekly report LLM call."""
+
+    temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    timeout: float = Field(default=120.0, gt=0)
+    max_output_chars: int = Field(default=3000, gt=0)
+
+
 class LLMSettings(BaseModel):
     """LLM parameters used for titles categorization, curation, and embedding."""
 
@@ -122,6 +138,20 @@ class LLMSettings(BaseModel):
     categorization: CategorizationSettings
     curation: CurationSettings
     embedding: EmbeddingSettings
+
+    analysis_model: str = "poolside/laguna-m.1:free"
+    analysis: LLMAnalysisSettings = Field(default_factory=LLMAnalysisSettings)
+
+
+class ReportSettings(BaseModel):
+    """Knobs for the weekly trends report pipeline."""
+
+    max_articles_to_analyze: int = Field(default=500, gt=0)
+    max_clusters: int = Field(default=8, gt=0)
+    min_cluster_size: int = Field(default=3, gt=0)
+    max_titles_per_cluster: int = Field(default=5, gt=0)
+    max_message_chars: int = Field(default=3500, gt=0)
+    include_sources_summary: bool = True
 
 
 class QuerySettings(BaseModel):
@@ -141,10 +171,12 @@ class AppSettings(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    orchestration: OrchestrationSettings
     session: SessionSettings
     newsdata: NewsDataSettings
     queries: list[QuerySettings]
     llm: LLMSettings
+    report: ReportSettings = Field(default_factory=ReportSettings)
 
 
 # ----------------------------

@@ -34,6 +34,17 @@ class ArticleTitle:
     title: str
 
 
+@dataclass(frozen=True)
+class EmbeddingRow:
+    """Published article with its embedding vector, used for weekly report clustering."""
+
+    id: int
+    title: str
+    category: Optional[str]
+    embedding: list[float]
+    request_domain: Optional[str]
+
+
 def connect(cfg: DbConfig) -> PgConnection:
     """Open a synchronous psycopg2 connection."""
     conn = psycopg2.connect(
@@ -289,6 +300,24 @@ SET embedding = %(embedding)s::vector
 WHERE id = %(id)s;
 """
 
+# ---------- report / cleanup queries ----------
+
+DELETE_OLD_UNPUBLISHED_SQL = """
+DELETE FROM articles
+WHERE publicated = FALSE
+  AND collected_dt < NOW() - INTERVAL '1 day' * %(days)s;
+"""
+
+SELECT_PUBLISHED_EMBEDDINGS_SQL = """
+SELECT id, title, category, embedding::text, request_domain
+FROM articles
+WHERE publicated = TRUE
+  AND embedding IS NOT NULL
+  AND collected_dt >= NOW() - INTERVAL '1 day' * %(days)s
+ORDER BY collected_dt DESC
+LIMIT %(limit)s;
+"""
+
 
 def fetch_published_without_embedding(
     conn: PgConnection, *, limit: int
@@ -311,3 +340,73 @@ def update_embedding(
     vec_str = "[" + ",".join(str(v) for v in embedding) + "]"
     with conn.cursor() as cur:
         cur.execute(UPDATE_EMBEDDING_SQL, {"id": article_id, "embedding": vec_str})
+
+
+# ---------- report / cleanup operations ----------
+
+
+def _parse_vector(vec_text: str) -> list[float]:
+    """Parse a PostgreSQL vector text '[0.1,0.2,...]' into a list of floats."""
+    return [float(x) for x in vec_text.strip("[]").split(",")]
+
+
+def cleanup_old_unpublished(conn: PgConnection, *, older_than_days: int) -> int:
+    """
+    Delete unpublished articles whose collected_dt is older than `older_than_days` days.
+
+    Intended to reclaim DB storage between weekly report runs.
+    The caller is responsible for committing the transaction.
+
+    Returns:
+        Number of rows deleted.
+    """
+    if older_than_days <= 0:
+        raise ValueError("older_than_days must be > 0")
+
+    with conn.cursor() as cur:
+        cur.execute(DELETE_OLD_UNPUBLISHED_SQL, {"days": older_than_days})
+        return cur.rowcount
+
+
+def fetch_published_embeddings_for_report(
+    conn: PgConnection, *, lookback_days: int, limit: int
+) -> list[EmbeddingRow]:
+    """
+    Fetch published articles with non-null embedding vectors collected within the
+    last `lookback_days` days. Used by the weekly report clustering pipeline.
+
+    Args:
+        lookback_days: How many days back to look (driven by orchestration.report_interval_days).
+        limit:         Maximum number of rows to return (driven by report.max_articles_to_analyze).
+
+    Returns:
+        List of EmbeddingRow sorted by collected_dt DESC (most recent first).
+    """
+    if lookback_days <= 0:
+        raise ValueError("lookback_days must be > 0")
+    if limit <= 0:
+        raise ValueError("limit must be > 0")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            SELECT_PUBLISHED_EMBEDDINGS_SQL, {"days": lookback_days, "limit": limit}
+        )
+        rows = cur.fetchall() or []
+
+    result: list[EmbeddingRow] = []
+    for row in rows:
+        article_id = int(row[0])
+        title = str(row[1])
+        category = str(row[2]) if row[2] is not None else None
+        embedding = _parse_vector(str(row[3]))
+        request_domain = str(row[4]) if row[4] is not None else None
+        result.append(
+            EmbeddingRow(
+                id=article_id,
+                title=title,
+                category=category,
+                embedding=embedding,
+                request_domain=request_domain,
+            )
+        )
+    return result

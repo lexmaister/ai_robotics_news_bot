@@ -4,7 +4,7 @@ WORKDIR /app
 
 # System dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libpq-dev && \
+    apt-get install -y --no-install-recommends gcc libpq-dev libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Install all Python dependencies directly
@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir \
     python-dotenv \
     pydantic \
     pydantic-settings \
-    newsdataapi
+    newsdataapi \
+    scikit-learn
 
 # Copy project source code
 COPY src/ ./src/

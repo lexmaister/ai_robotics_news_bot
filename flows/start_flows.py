@@ -31,12 +31,27 @@ def _interval_seconds_from_settings(settings_path: Path) -> int:
     raw = yaml.safe_load(settings_path.read_text(encoding="utf-8")) or {}
     runs_per_day = int((raw.get("orchestration") or {}).get("runs_per_day", 0))
     if runs_per_day <= 0:
-        raise ValueError(f"orchestration.runs_per_day missing or invalid in {settings_path}")
+        raise ValueError(
+            f"orchestration.runs_per_day missing or invalid in {settings_path}"
+        )
     if 86400 % runs_per_day != 0:
         # Not fatal, but makes it explicit you may get fractional hours if you ever display it.
         # Prefect interval schedule works in seconds, so integer division is fine.
         pass
     return int(24 * 3600 / runs_per_day)
+
+
+def _report_interval_seconds_from_settings(settings_path: Path) -> int:
+    """Compute report interval in seconds from orchestration.report_interval_days."""
+    raw = yaml.safe_load(settings_path.read_text(encoding="utf-8")) or {}
+    report_interval_days = int(
+        (raw.get("orchestration") or {}).get("report_interval_days", 7)
+    )
+    if report_interval_days <= 0:
+        raise ValueError(
+            f"orchestration.report_interval_days missing or invalid in {settings_path}"
+        )
+    return report_interval_days * 86400
 
 
 def run(cmd: list[str]) -> None:
@@ -62,20 +77,40 @@ def main() -> None:
     # Create/update deployment for the production flow
     # Target pool must match your worker: default-agent-pool
     interval_seconds = _interval_seconds_from_settings(env.settings_path)
-    print(f"Deploying with interval_seconds={interval_seconds} (from {env.settings_path})")
-    run([
-        "prefect",
-        "deploy",
-        "flows/daily_news_flow.py:daily_news_flow",
-        "--name",
-        "prod",
-        "--pool",
-        "default-agent-pool",
-        "--interval",
-        str(interval_seconds),
-    ])
-
+    report_interval_seconds = _report_interval_seconds_from_settings(env.settings_path)
+    print(f"interval_seconds={interval_seconds} (daily, from {env.settings_path})")
+    print(
+        f"report_interval_seconds={report_interval_seconds} ({report_interval_seconds // 86400} day(s), from {env.settings_path})"
+    )
+    run(
+        [
+            "prefect",
+            "deploy",
+            "flows/daily_news_flow.py:daily_news_flow",
+            "--name",
+            "prod",
+            "--pool",
+            "default-agent-pool",
+            "--interval",
+            str(interval_seconds),
+        ]
+    )
     print("Deployment applied: daily-news-flow/prod")
+
+    run(
+        [
+            "prefect",
+            "deploy",
+            "flows/report_flow.py:report_flow",
+            "--name",
+            "weekly",
+            "--pool",
+            "default-agent-pool",
+            "--interval",
+            str(report_interval_seconds),
+        ]
+    )
+    print("Deployment applied: report-flow/weekly")
 
 
 if __name__ == "__main__":

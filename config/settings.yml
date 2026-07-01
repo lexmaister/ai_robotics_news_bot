@@ -28,6 +28,7 @@ orchestration:
   runs_per_day: 7                       # 24h ÷ 7 = ~3h 26min between runs
   # Chosen so that 7 × 30 = 210 ≈ 200 daily credits (slight overshoot is OK;
   # the last session simply gets fewer credits remaining).
+  report_interval_days: 7               # weekly report + cleanup cadence (days)
 
 # --------------------------------------------------------------------------- #
 # Session — one gathering run
@@ -102,6 +103,18 @@ queries:
 # • If upgrading to a paid plan, increase: credits, domains_per_session, size.
 
 # --------------------------------------------------------------------------- #
+# Report — weekly trends report knobs
+# (non-time-window knobs only; lookback window = orchestration.report_interval_days)
+# --------------------------------------------------------------------------- #
+report:
+  max_articles_to_analyze: 500     # max published articles fetched for clustering
+  max_clusters: 8                  # KMeans k; actual count may be less after min_cluster_size filter
+  min_cluster_size: 3              # clusters smaller than this are excluded from the report
+  max_titles_per_cluster: 5        # representative titles shown per cluster in the LLM prompt
+  max_message_chars: 3500          # max Telegram message length (HTML, safety trim)
+  include_sources_summary: true    # append top-5 source domains block at end of LLM prompt
+
+# --------------------------------------------------------------------------- #
 # LLM Models (OpenRouter)
 # --------------------------------------------------------------------------- #
 llm:
@@ -171,4 +184,13 @@ llm:
   embedding:
     dimensions: 1536                 # must match VECTOR(1536) in db/schema.sql
     batch_size: 50                   # published articles to embed per flow run
+
+  # ------------------------------------------------------------------------- #
+  # Weekly report narrative generation — operational knobs
+  # ------------------------------------------------------------------------- #
+  analysis_model: "poolside/laguna-m.1:free"
+  analysis:
+    temperature: 0.3                 # slight creativity for readable prose
+    timeout: 120                     # seconds; inherits global timeout if omitted
+    max_output_chars: 3000           # hard cap applied in Python before posting
 
