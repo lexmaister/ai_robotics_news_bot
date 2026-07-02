@@ -2,48 +2,40 @@
 # AI & Robotics News Curation Bot — Settings
 # =============================================================================
 # Secrets (API keys, tokens) live in .env, not here.
+# See README for architecture overview and strategy rationale.
 #
-# --- FREE PLAN CONSTRAINTS (newsdata.io) ---
-# • 200 credits/day (1 credit = 1 API request)
+# --- NEWSDATA.IO FREE PLAN CONSTRAINTS ---
+# • 200 credits/day  (1 credit = 1 API request)
 # • Rate limit: max 30 requests per 15-minute window
 # • Max 10 results per request (size=10)
 # • Timeframe limited to last 48 hours
 #
-# --- BUDGET MATH ---
+# --- SESSION MATH ---
 # 200 credits ÷ 7 sessions/day ≈ 28.6 credits/session → we use 30 per session.
-# Last session of the day gets only the remaining credits (~20), which is fine
-# since the DB already captured most articles by then.
-#
-# --- SESSION STRUCTURE ---
-# Each session: 5 domains × 6 queries = 30 requests (= 30 credits).
-# 5 domains are randomly sampled from the full 25-source whitelist each run.
-# This provides source diversity across the day while staying within rate limits.
-# Deduplication of articles is handled at DB level (pgvector upsert on link hash).
+# 5 domains × 6 queries = 30 requests = 30 credits, filling the rate-limit window.
+# Last session of the day may receive fewer remaining credits — acceptable.
 # =============================================================================
 
 # --------------------------------------------------------------------------- #
 # Orchestration (Prefect scheduler)
 # --------------------------------------------------------------------------- #
 orchestration:
-  runs_per_day: 7                       # 24h ÷ 7 = ~3h 26min between runs
-  # Chosen so that 7 × 30 = 210 ≈ 200 daily credits (slight overshoot is OK;
-  # the last session simply gets fewer credits remaining).
+  runs_per_day: 7                       # ~3h 26min between runs (24h ÷ 7)
   report_interval_days: 7               # weekly report + cleanup cadence (days)
 
 # --------------------------------------------------------------------------- #
 # Session — one gathering run
 # --------------------------------------------------------------------------- #
 session:
-  credits: 30                           # requests per session; equals rate-limit ceiling (30/15min)
-  domains_per_session: 5                # randomly sample 5 domains from 25 each run
-  # 5 domains × 6 queries = 30 requests → exactly fills the rate-limit window.
+  credits: 30                           # newsdata.io requests per session (= rate-limit ceiling)
+  domains_per_session: 5                # domains randomly sampled from whitelist each run
 
 # --------------------------------------------------------------------------- #
 # NewsData.io API parameters
 # --------------------------------------------------------------------------- #
 newsdata:
   language: "en"
-  size: 10                              # results per request (free plan maximum)
+  size: 10                              # results per request (max allowed by newsdata.io)
   removeduplicate: true                 # API-level dedup within a single response
   excludefield:                         # drop heavy/unused fields to reduce payload
     - image_url
@@ -56,17 +48,11 @@ newsdata:
     - language
     - keywords
     - creator
-  query_field_mode: "random"            # randomly pick "q" (full-text) or "qInTitle" per request
-  # "q" casts a wide net; "qInTitle" is more precise. Alternating
-  # gives a mix of recall and precision without doubling credit spend.
+  query_field_mode: "random"            # randomly pick "q" (full-text) or "qInTitle" per request; balances recall vs precision
 
 # --------------------------------------------------------------------------- #
-# Queries — 6 broad topics (max 100 chars each per API constraint)
-# --------------------------------------------------------------------------- #
-# Strategy: queries are intentionally broad and inclusive because the domain
-# whitelist already constrains results to high-quality sources. Broad queries
-# ensure we don't miss relevant articles that use unexpected terminology.
-# All 6 queries run against every sampled domain each session.
+# Queries — 6 broad topics (max 100 chars each per newsdata.io constraint)
+# Intentionally broad: the domain whitelist already filters for quality sources.
 # --------------------------------------------------------------------------- #
 queries:
   - name: "robotics"
@@ -96,11 +82,9 @@ queries:
 # --------------------------------------------------------------------------- #
 # Design Notes
 # --------------------------------------------------------------------------- #
-# • Round-robin rotation state is persisted in last_news.json (domain_group field).
-# • Deduplication handled at DB level (pgvector upsert on article link/hash).
-# • Theoretical max yield: 30 requests × 10 articles = 300 articles/session,
-#   but real yield is lower due to overlap, dedup, and source availability.
-# • If upgrading to a paid plan, increase: credits, domains_per_session, size.
+# • Rotation state persisted in last_news.json (domain_group field).
+# • Deduplication at DB level via unique constraint on article link/hash.
+# • Theoretical max: 30 × 10 = 300 articles/session; real yield is lower.
 
 # --------------------------------------------------------------------------- #
 # Report — weekly trends report knobs
@@ -115,82 +99,41 @@ report:
   include_sources_summary: true    # append top-5 source domains block at end of LLM prompt
 
 # --------------------------------------------------------------------------- #
-# LLM Models (OpenRouter)
+# LLM Models (OpenRouter) — swap any model without code changes
 # --------------------------------------------------------------------------- #
 llm:
-  # Cheap/free model used for high-volume, low-stakes tasks (title categorization)
-  categorization_model: "nvidia/nemotron-nano-9b-v2:free"
-  # Higher-quality model used for article selection via tool calling (curation)
-  curation_model: "openai/gpt-oss-120b:free"
-  # OpenRouter API base URL (OpenAI-compatible endpoint)
   openrouter_base_url: "https://openrouter.ai/api/v1"
-  # OpenRouter API call timeout in seconds (shared by all LLM tasks)
-  timeout: 120
-  # ------------------------------------------------------------------------- #
-  # Task 4: Categorize backlog (uncategorized titles) — operational knobs
-  #
-  # The backlog size is unknown. Task4 loops until no uncategorized titles remain,
-  # but needs safety valves and failure behavior controls to avoid infinite loops
-  # and to handle "poison pill" titles that repeatedly cause invalid LLM output.
-  #
-  # How it works:
-  # - Fetch up to batch_size titles from DB.
-  # - Call LLM to return a JSON array of N categories (N == number of titles).
-  # - If validation fails, Task4 splits the chunk into smaller chunks until it
-  #   isolates the problematic title(s).
-  #
-  # poison_mode:
-  # - "fail": raise and fail the flow if a single title cannot be categorized.
-  # - "mark": set that title's category to poison_fallback_category and continue.
-  #
-  # NOTE: poison_fallback_category must be a valid DB value. If you want a marker
-  # that is "invalid" for downstream logic, treat it as a reserved category in code.
-  # ------------------------------------------------------------------------- #
+  categorization_model: "meta-llama/llama-3.1-8b-instruct"   # Task 4: batch title labeling
+  curation_model: "google/gemma-4-31b-it"                    # Task 5: article selection
+  embedding_model: "qwen/qwen3-embedding-8b"                 # Task 7: title vectorization
+  analysis_model: "deepseek/deepseek-v4-flash"               # Report Task 4: narrative
+  timeout: 120                       # OpenRouter HTTP timeout in seconds (all LLM tasks)
+
+  # Task 4 — loops batches until backlog empty or max_total_rounds.
+  # poison_mode "fail" halts on unresolvable title; "mark" labels it and continues.
+  # poison_fallback_category must be a valid DB category value.
   categorization:
-    batch_size: 10                   # number of uncategorized article titles to send to the LLM per iteration
-    max_total_rounds: 50             # hard cap on total LLM attempts per flow run
-    min_chunk_size: 1                # smallest chunk size during split retries
+    batch_size: 10                   # titles sent to LLM per round
+    max_total_rounds: 50             # hard loop cap per flow run
+    min_chunk_size: 1                # smallest chunk during split-retry
     poison_mode: "mark"              # "fail" | "mark"
     poison_fallback_category: "Unrecognized"
 
-  # --------------------------------------------------------------------------- #
-  # Task 5: Curate for publication — operational knobs
-  #
-  # How it works:
-  # - Fetch up to batch_size categorized, unpublicated articles from DB.
-  # - Fetch rag_context_size recently published articles as diversity context.
-  # - Ask LLM via tool calling to select up to max_selected article IDs.
-  # - Validate all returned IDs were in the candidate list sent to the model.
-  # - Write selected articles (id, title, category) to /app/data/to_publish.json.
-  # --------------------------------------------------------------------------- #
+  # Task 5 — selects best articles via tool-calling; uses recent posts as diversity context.
   curation:
-    batch_size: 20                   # max categorized+unpublicated articles to fetch per run
-    max_selected: 3                  # max articles to select for publication per session
-    rag_context_size: 20             # recently published articles for diversity context
+    batch_size: 20                   # max candidate articles fetched per run
+    max_selected: 3                  # max articles posted per session
+    rag_context_size: 20             # recently published articles as diversity context
     temperature: 0.0                 # deterministic selection
 
-  # --------------------------------------------------------------------------- #
-  # Task 7: Embed published titles — operational knobs
-  #
-  # How it works:
-  # - Fetch up to batch_size published articles whose embedding IS NULL.
-  # - Call OpenRouter embeddings API to produce vectors for each title.
-  # - Write vectors back to articles.embedding (VECTOR(1536)) in pgvector.
-  #
-  # dimensions must match the VECTOR(N) column declared in db/schema.sql.
-  # The model is queried via OpenRouter's OpenAI-compatible /embeddings endpoint.
-  # --------------------------------------------------------------------------- #
-  embedding_model: "qwen/qwen3-embedding-8b"
+  # Task 7 — dimensions must match VECTOR(N) in db/schema.sql.
   embedding:
     dimensions: 1536                 # must match VECTOR(1536) in db/schema.sql
-    batch_size: 50                   # published articles to embed per flow run
+    batch_size: 50                   # published articles to embed per run
 
-  # ------------------------------------------------------------------------- #
-  # Weekly report narrative generation — operational knobs
-  # ------------------------------------------------------------------------- #
-  analysis_model: "poolside/laguna-m.1:free"
+  # Report Task 4 — weekly narrative generation.
   analysis:
     temperature: 0.3                 # slight creativity for readable prose
-    timeout: 120                     # seconds; inherits global timeout if omitted
+    timeout: 120                     # seconds; overrides global timeout
     max_output_chars: 3000           # hard cap applied in Python before posting
 
