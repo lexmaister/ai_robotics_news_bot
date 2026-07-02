@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS articles (
 
     -- LLM metadata
     category TEXT NULL,
+    categorization_model TEXT NULL,   -- OpenRouter model used for Task 4 (category assignment)
+    curation_model TEXT NULL,         -- OpenRouter model used for Task 5 (article selection)
 
     -- Publishing state
     publicated BOOLEAN NOT NULL DEFAULT FALSE,

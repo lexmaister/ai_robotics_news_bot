@@ -108,13 +108,20 @@ SELECT id FROM articles WHERE link = %(link)s LIMIT 1;
 
 UPDATE_CATEGORY_SQL = """
 UPDATE articles
-SET category = %(category)s
+SET    category             = %(category)s,
+       categorization_model = %(categorization_model)s
 WHERE id = %(id)s;
 """
 
 MARK_PUBLICATED_SQL = """
 UPDATE articles
 SET publicated = TRUE
+WHERE id = %(id)s;
+"""
+
+MARK_CURATION_MODEL_SQL = """
+UPDATE articles
+SET curation_model = %(curation_model)s
 WHERE id = %(id)s;
 """
 
@@ -189,16 +196,46 @@ def fetch_titles_for_categorization(
     return out
 
 
-def update_category(conn: PgConnection, *, article_id: int, category: str) -> None:
-    """Write the LLM-assigned category for a single article."""
+def update_category(
+    conn: PgConnection,
+    *,
+    article_id: int,
+    category: str,
+    categorization_model: Optional[str] = None,
+) -> None:
+    """Write the LLM-assigned category and model provenance for a single article."""
     with conn.cursor() as cur:
-        cur.execute(UPDATE_CATEGORY_SQL, {"id": article_id, "category": category})
+        cur.execute(
+            UPDATE_CATEGORY_SQL,
+            {
+                "id": article_id,
+                "category": category,
+                "categorization_model": categorization_model,
+            },
+        )
 
 
 def mark_publicated(conn: PgConnection, *, article_id: int) -> None:
     """Mark an article as published (publicated = TRUE)."""
     with conn.cursor() as cur:
         cur.execute(MARK_PUBLICATED_SQL, {"id": article_id})
+
+
+def mark_curated(
+    conn: PgConnection,
+    *,
+    article_id: int,
+    curation_model: str,
+) -> None:
+    """Persist the curation model name and timestamp for a selected article."""
+    with conn.cursor() as cur:
+        cur.execute(
+            MARK_CURATION_MODEL_SQL,
+            {
+                "id": article_id,
+                "curation_model": curation_model,
+            },
+        )
 
 
 # ---------- curation queries ----------

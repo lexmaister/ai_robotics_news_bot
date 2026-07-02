@@ -40,6 +40,7 @@ from src.db import (
     fetch_recent_published_context,
     fetch_titles_for_categorization,
     insert_or_skip_article,
+    mark_curated,
     mark_publicated,
     update_category,
     update_embedding,
@@ -288,7 +289,12 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                     cats = categorize_chunk(chunk_titles)
 
                     for article_id, cat in zip(chunk_ids, cats):
-                        update_category(conn, article_id=article_id, category=cat)
+                        update_category(
+                            conn,
+                            article_id=article_id,
+                            category=cat,
+                            categorization_model=model,
+                        )
                         updated += 1
 
                     conn.commit()
@@ -327,7 +333,10 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
                         chunk_ids[0],
                     )
                     update_category(
-                        conn, article_id=chunk_ids[0], category=poison_fallback
+                        conn,
+                        article_id=chunk_ids[0],
+                        category=poison_fallback,
+                        categorization_model=model,
                     )
                     conn.commit()
                     updated += 1
@@ -423,6 +432,13 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
             len(candidates),
         )
 
+        curation_model = str(settings.llm.curation_model)
+
+        # Persist curation model + timestamp immediately for selected articles
+        for cid in result.selected_ids:
+            mark_curated(conn, article_id=cid, curation_model=curation_model)
+        conn.commit()
+
         # Enrich selected IDs with title + category from the already-fetched candidates
         candidates_by_id = {c.id: c for c in candidates}
         articles_out = [
@@ -431,6 +447,7 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
                 "title": candidates_by_id[cid].title,
                 "category": candidates_by_id[cid].category,
                 "link": candidates_by_id[cid].link,
+                "curation_model": curation_model,
             }
             for cid in result.selected_ids
         ]
@@ -516,6 +533,7 @@ def publish_to_telegram_task(curation: dict[str, Any]) -> dict[str, Any]:
             title=a["title"],
             category=a["category"],
             link=a["link"],
+            curation_model=a.get("curation_model", ""),
         )
         for a in raw_articles
     ]
@@ -656,7 +674,9 @@ def embed_published_task(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 @flow(name="daily-news-flow")
-def daily_news_flow(skip_ingestion: bool = False, skip_categorization: bool = False) -> dict:
+def daily_news_flow(
+    skip_ingestion: bool = False, skip_categorization: bool = False
+) -> dict:
     """Main production flow entrypoint.
 
     Args:

@@ -59,9 +59,28 @@ class ArticleToPublish:
     title: str
     category: str
     link: str
+    curation_model: str = ""  # OpenRouter model used for Task 5 selection
 
 
-class TelegramPublishError(RuntimeError):
+def model_slug(model_name: str) -> str:
+    """
+    Convert an OpenRouter model string to a valid Telegram hashtag segment.
+
+    Rules:
+    - Lowercase the entire string.
+    - Replace any character that is not alphanumeric or underscore with ``_``.
+    - Collapse consecutive underscores.
+    - Strip leading/trailing underscores.
+
+    Examples::
+
+        model_slug("google/gemma-4-31b-it")            -> "google_gemma_4_31b_it"
+        model_slug("meta-llama/llama-3.1-8b-instruct") -> "meta_llama_llama_3_1_8b_instruct"
+    """
+    slug = model_name.lower()
+    slug = re.sub(r"[^a-z0-9_]", "_", slug)
+    slug = re.sub(r"_+", "_", slug)
+    return slug.strip("_")
     """Raised when the Telegram Bot API returns an error or the HTTP call fails."""
 
 
@@ -82,16 +101,24 @@ def format_article_message(article: ArticleToPublish) -> str:
         <a href="URL">Read full article</a>
 
         <a href="channel">@robotics_ai_news</a>
+
+        #curation_model_<slug>
     """
     emoji = CATEGORY_EMOJI.get(article.category, _DEFAULT_EMOJI)
     safe_category = html.escape(article.category)
     safe_title = html.escape(article.title)
     safe_link = html.escape(article.link.strip())
+
+    tag_line = ""
+    if article.curation_model:
+        tag_line = f"\n\n#curation_model_{model_slug(article.curation_model)}"
+
     return (
         f"{emoji} <b>{safe_category}</b>\n\n"
         f"{safe_title}\n\n"
         f'<a href="{safe_link}">Read full article</a>\n\n'
         f'<a href="{_CHANNEL_URL}">@robotics_ai_news</a>'
+        f"{tag_line}"
     )
 
 
