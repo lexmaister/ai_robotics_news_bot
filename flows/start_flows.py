@@ -28,6 +28,7 @@ from src.config import EnvSettings, load_settings, load_whitelist
 
 
 def _interval_seconds_from_settings(settings_path: Path) -> int:
+    """Compute the daily-flow interval in seconds from orchestration.runs_per_day in settings.yml."""
     raw = yaml.safe_load(settings_path.read_text(encoding="utf-8")) or {}
     runs_per_day = int((raw.get("orchestration") or {}).get("runs_per_day", 0))
     if runs_per_day <= 0:
@@ -55,12 +56,14 @@ def _report_interval_seconds_from_settings(settings_path: Path) -> int:
 
 
 def run(cmd: list[str]) -> None:
+    """Run a shell command and raise RuntimeError if it exits with a non-zero code."""
     proc = subprocess.run(cmd, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"Command failed ({proc.returncode}): {' '.join(cmd)}")
 
 
 def main() -> None:
+    """Validate configuration and register Prefect deployments for both flows."""
     env = EnvSettings()
 
     # Validate config early (will raise if queries too long etc.)

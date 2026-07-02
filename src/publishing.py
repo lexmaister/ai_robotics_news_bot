@@ -81,6 +81,9 @@ def model_slug(model_name: str) -> str:
     slug = re.sub(r"[^a-z0-9_]", "_", slug)
     slug = re.sub(r"_+", "_", slug)
     return slug.strip("_")
+
+
+class TelegramPublishError(Exception):
     """Raised when the Telegram Bot API returns an error or the HTTP call fails."""
 
 

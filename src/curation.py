@@ -1,4 +1,5 @@
-"""src/curation.py
+"""
+src/curation.py
 
 All LLM logic lives here.
 

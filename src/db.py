@@ -19,6 +19,8 @@ from psycopg2.extensions import connection as PgConnection
 
 @dataclass(frozen=True)
 class DbConfig:
+    """Connection parameters for a PostgreSQL database."""
+
     host: str
     port: int
     user: str
