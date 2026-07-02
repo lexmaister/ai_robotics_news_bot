@@ -97,6 +97,7 @@ report:
   max_titles_per_cluster: 5        # representative titles shown per cluster in the LLM prompt
   max_message_chars: 3500          # max Telegram message length (HTML, safety trim)
   include_sources_summary: true    # append top-5 source domains block at end of LLM prompt
+  include_vector_insights: true    # inject clustering signal metrics (breadth, dominance, cohesion) into prompt
 
 # --------------------------------------------------------------------------- #
 # LLM Models (OpenRouter) — swap any model without code changes
@@ -106,7 +107,7 @@ llm:
   categorization_model: "meta-llama/llama-3.1-8b-instruct"   # Task 4: batch title labeling
   curation_model: "google/gemma-4-31b-it"                    # Task 5: article selection
   embedding_model: "qwen/qwen3-embedding-8b"                 # Task 7: title vectorization
-  analysis_model: "deepseek/deepseek-v4-flash"               # Report Task 4: narrative
+  analysis_model: "deepseek/deepseek-v4-pro"                 # Report Task 4: narrative
   timeout: 120                       # OpenRouter HTTP timeout in seconds (all LLM tasks)
 
   # Task 4 — loops batches until backlog empty or max_total_rounds.

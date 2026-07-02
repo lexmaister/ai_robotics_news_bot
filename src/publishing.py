@@ -195,7 +195,7 @@ def format_weekly_report_message(report_text: str, *, max_chars: int = 4096) -> 
             formatted_lines.append(escaped)
 
     body = "\n".join(formatted_lines)
-    footer = f'\n\n<a href="{_CHANNEL_URL}">@robotics_ai_news</a>'
+    footer = f'\n\n<a href="{_CHANNEL_URL}">@robotics_ai_news</a>\n\n#report'
     message = body + footer
 
     if len(message) > max_chars:

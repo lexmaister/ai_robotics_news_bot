@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -48,7 +49,11 @@ class ClusterSummary:
     cluster_id: int
     size: int
     top_categories: list[str]
-    representative_titles: list[str]
+    representative_titles: list[str]  # articles closest to centroid (most typical)
+    cohesion: float = 0.0  # mean distance to centroid; lower = tighter cluster
+    outlier_titles: list[str] = field(
+        default_factory=list
+    )  # articles farthest from centroid
     top_domain: Optional[str] = None
 
 
@@ -144,6 +149,16 @@ def cluster_articles(
         top_n = min(max_titles_per_cluster, len(cluster_rows))
         rep_titles = [cluster_rows[int(i)].title for i in sorted_local_idx[:top_n]]
 
+        # Cohesion: mean distance of cluster articles to centroid (lower = tighter)
+        cohesion = float(np.mean(dists))
+
+        # Outlier titles: articles farthest from centroid (niche/unique angle within theme)
+        outlier_titles = [
+            cluster_rows[int(i)].title
+            for i in sorted_local_idx[-top_n:][::-1]
+            if cluster_rows[int(i)].title not in rep_titles
+        ][:top_n]
+
         # Top source domain (optional source attribution)
         domain_counts: dict[str, int] = {}
         for r in cluster_rows:
@@ -163,6 +178,8 @@ def cluster_articles(
                 size=len(cluster_rows),
                 top_categories=top_cats,
                 representative_titles=rep_titles,
+                cohesion=cohesion,
+                outlier_titles=outlier_titles,
                 top_domain=top_domain,
             )
         )
@@ -183,6 +200,46 @@ def cluster_articles(
 # ---------------------------------------------------------------------------
 
 
+def _compute_vector_insights(
+    clusters: list[ClusterSummary], total_articles: int
+) -> str:
+    """
+    Derive three signal metrics from clustering results for the LLM prompt.
+
+    Variant A — Coverage breadth: number of distinct clusters → broad/moderate/focused.
+    Variant B — Dominant trend share: top cluster's article count as % of total.
+    Variant C — Most focused cluster: lowest cohesion score (tightest, most homogeneous).
+
+    These give the LLM real signal to write a stronger, data-grounded intro sentence.
+    If you want to expose additional metrics, compute them here and append to `lines`.
+    """
+    if not clusters:
+        return ""
+
+    # Variant A: coverage breadth
+    n_clusters = len(clusters)
+    breadth = (
+        "broad" if n_clusters >= 6 else "moderate" if n_clusters >= 4 else "focused"
+    )
+
+    # Variant B: dominant trend share
+    top = clusters[0]
+    top_pct = round(top.size / total_articles * 100) if total_articles > 0 else 0
+    top_cat = top.top_categories[0] if top.top_categories else "—"
+
+    # Variant C: most focused cluster (smallest mean centroid distance)
+    most_focused = min(clusters, key=lambda c: c.cohesion)
+    focused_cat = most_focused.top_categories[0] if most_focused.top_categories else "—"
+
+    lines = [
+        "Signal metrics (use to strengthen your intro sentence):",
+        f"• Coverage breadth: {n_clusters} distinct clusters — {breadth} week.",
+        f'• Dominant trend: "{top_cat}" leads with {top_pct}% of articles ({top.size}/{total_articles}).',
+        f'• Most focused cluster: "{focused_cat}" (cohesion {most_focused.cohesion:.2f} — articles are tightly related).',
+    ]
+    return "\n".join(lines)
+
+
 def build_analysis_prompt(
     *,
     template_path: Path,
@@ -191,31 +248,58 @@ def build_analysis_prompt(
     lookback_days: int,
     max_output_chars: int,
     include_sources_summary: bool,
+    include_vector_insights: bool,
     all_rows: list[EmbeddingRow],
 ) -> str:
     """
     Render the Analysis.md prompt template with cluster data and metadata.
 
     Substituted placeholders:
-        {{CLUSTERS_JSON}}      — JSON array of cluster objects
-        {{LOOKBACK_DAYS}}      — integer (days)
-        {{TOTAL_ARTICLES}}     — integer
-        {{CLUSTER_COUNT}}      — integer
-        {{SOURCE_BLOCK}}       — optional top-5 sources Markdown block (or empty string)
-        {{MAX_OUTPUT_CHARS}}   — integer character limit for the LLM output
+        {{CLUSTERS_JSON}}         — JSON array of cluster objects (includes cohesion + outlier_titles)
+        {{DATE_RANGE}}            — human-readable date span, e.g. "Jun 25 – Jul 2, 2026"
+        {{TOTAL_ARTICLES}}        — integer
+        {{CLUSTER_COUNT}}         — integer
+        {{SOURCE_BLOCK}}          — optional top-5 sources block (or empty string)
+        {{VECTOR_INSIGHTS_BLOCK}} — optional signal metrics block (or empty string)
+        {{MAX_OUTPUT_CHARS}}      — integer character limit for LLM output
     """
     template = template_path.read_text(encoding="utf-8")
 
+    # Compute date range string from run date and lookback window
+    today = date.today()
+    date_from = today - timedelta(days=lookback_days - 1)
+    date_to = today
+
+    def _fmt(d: date) -> str:
+        return f"{d.strftime('%b')} {d.day}"
+
+    if date_from.year == date_to.year:
+        date_range = f"{_fmt(date_from)} – {_fmt(date_to)}, {date_to.year}"
+    else:
+        date_range = (
+            f"{_fmt(date_from)}, {date_from.year} – {_fmt(date_to)}, {date_to.year}"
+        )
+
+    # Cluster JSON: include cohesion + outlier_titles so LLM can use niche angles
     clusters_data = [
         {
             "cluster": idx + 1,
             "size": c.size,
             "top_categories": c.top_categories,
             "representative_titles": c.representative_titles,
+            "outlier_titles": c.outlier_titles,
+            "cohesion": round(c.cohesion, 3),
         }
         for idx, c in enumerate(clusters)
     ]
     clusters_json = json.dumps(clusters_data, ensure_ascii=False, indent=2)
+
+    # Optional vector insights block
+    vector_insights_block = (
+        _compute_vector_insights(clusters, total_articles)
+        if include_vector_insights
+        else ""
+    )
 
     # Optional sources block
     source_block = ""
@@ -235,9 +319,10 @@ def build_analysis_prompt(
 
     prompt = (
         template.replace("{{CLUSTERS_JSON}}", clusters_json)
-        .replace("{{LOOKBACK_DAYS}}", str(lookback_days))
+        .replace("{{DATE_RANGE}}", date_range)
         .replace("{{TOTAL_ARTICLES}}", str(total_articles))
         .replace("{{CLUSTER_COUNT}}", str(len(clusters)))
+        .replace("{{VECTOR_INSIGHTS_BLOCK}}", vector_insights_block)
         .replace("{{SOURCE_BLOCK}}", source_block)
         .replace("{{MAX_OUTPUT_CHARS}}", str(max_output_chars))
     )

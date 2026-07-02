@@ -152,6 +152,9 @@ class ReportSettings(BaseModel):
     max_titles_per_cluster: int = Field(default=5, gt=0)
     max_message_chars: int = Field(default=3500, gt=0)
     include_sources_summary: bool = True
+    include_vector_insights: bool = (
+        True  # inject clustering signal metrics into LLM prompt
+    )
 
 
 class QuerySettings(BaseModel):

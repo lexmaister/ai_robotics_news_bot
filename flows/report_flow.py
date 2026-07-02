@@ -201,6 +201,7 @@ def generate_report_task(cfg: dict[str, Any], rows: list[EmbeddingRow]) -> str:
         lookback_days=settings.orchestration.report_interval_days,
         max_output_chars=settings.llm.analysis.max_output_chars,
         include_sources_summary=settings.report.include_sources_summary,
+        include_vector_insights=settings.report.include_vector_insights,
         all_rows=rows,
     )
 
