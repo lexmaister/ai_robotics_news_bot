@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import logging
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -162,21 +163,28 @@ def send_telegram_message(
 # ---------------------------------------------------------------------------
 
 
-def format_weekly_report_message(report_text: str, *, max_chars: int = 4096) -> str:
+def format_weekly_report_message(
+    report_text: str,
+    *,
+    max_chars: int = 4096,
+    vector_stats: str = "",
+) -> str:
     """
     Format the LLM-generated weekly report text for Telegram HTML mode.
 
-    Rules:
-    - The first non-empty line is wrapped in <b>…</b> to serve as the heading.
-    - All lines are HTML-escaped to prevent injection of raw tags.
-    - A channel footer link is appended.
-    - The total message is trimmed to max_chars if needed, cutting at the last
-      newline boundary to avoid mid-line truncation.
+    Processing steps:
+    - First non-empty line → <b>heading</b>.
+    - ``**label**`` markers in bullet lines → <b>label</b> (bold insight names).
+    - All other text is HTML-escaped to prevent tag injection.
+    - Blank lines are inserted: after the header and before each bullet point.
+    - vector_stats compact line (from clustering math) is appended before the footer.
+    - Total message trimmed to max_chars if needed, preserving the footer.
 
     Args:
-        report_text: Plain-text report from the LLM (may contain newlines).
-        max_chars:   Maximum total character count of the returned HTML string.
-                     Telegram hard-limits messages to 4096 characters.
+        report_text:  Plain-text report from the LLM (may contain newlines).
+        max_chars:    Maximum total character count. Telegram hard-limits to 4096.
+        vector_stats: Optional one-liner from build_vector_stats_line(), appended
+                      verbatim (e.g. '📊 Broad week · 5 clusters · ...').
 
     Returns:
         HTML-formatted string ready to pass to send_telegram_message().
@@ -188,14 +196,29 @@ def format_weekly_report_message(report_text: str, *, max_chars: int = 4096) -> 
     formatted_lines: list[str] = []
     for i, line in enumerate(lines):
         escaped = html.escape(line)
+        # Convert **label** → <b>label</b> (safe: ** is not an HTML special char,
+        # so html.escape never touches it, and the inner text is already escaped).
+        escaped = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped)
         if i == 0 and escaped.strip():
-            # Bold the heading line
-            formatted_lines.append(f"<b>{escaped}</b>")
-        else:
-            formatted_lines.append(escaped)
+            # The header line gets an outer <b> wrap (on top of any inner ** the LLM added)
+            if not escaped.startswith("<b>"):
+                escaped = f"<b>{escaped}</b>"
+        formatted_lines.append(escaped)
 
-    body = "\n".join(formatted_lines)
-    footer = f'\n\n<a href="{_CHANNEL_URL}">@robotics_ai_news</a>\n\n#report'
+    # Insert blank lines: after the header (position 1) and before each bullet
+    spaced: list[str] = []
+    for i, line in enumerate(formatted_lines):
+        if i == 1 and line.strip():  # gap between header and intro
+            spaced.append("")
+        elif line.lstrip().startswith("•"):  # gap before each bullet
+            spaced.append("")
+        spaced.append(line)
+
+    body = "\n".join(spaced)
+    stats_part = f"\n\n{html.escape(vector_stats)}" if vector_stats.strip() else ""
+    footer = (
+        f'{stats_part}\n\n<a href="{_CHANNEL_URL}">@robotics_ai_news</a>\n\n#report'
+    )
     message = body + footer
 
     if len(message) > max_chars:

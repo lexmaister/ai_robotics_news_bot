@@ -32,24 +32,31 @@ Each cluster fields:
 
 ## Format Requirements
 
-Write the report as **plain text only** — no markdown, no code fences, no `#` headers.
+Output **only the report text** — no preamble, no explanation.
 
-Structure:
+Structure (output exactly this layout, with a blank line between each section):
 
-1. **Header line** (first line — use the exact date range from Report Metadata above):
-   `🗓️ Weekly AI & Robotics Digest — {{DATE_RANGE}}`
-2. **One intro sentence** (no label): one sentence naming the dominant theme of the week and its significance.
-3. **Up to 5 bullet points** using `•`, ordered largest cluster first:
-   `• Theme Label — One concise sentence of insight synthesised from the article titles.`
-   - Theme Label: 2–4 words, Title Case.
-   - Synthesise the titles — do NOT copy them verbatim.
-   - Where relevant, draw on `outlier_titles` to add a niche angle to the bullet.
-4. **No closing paragraph.**
+```
+🗓️ Weekly AI & Robotics Digest: {{DATE_RANGE}}
+
+[One intro sentence: the dominant theme of the week and why it matters.]
+
+• **Theme Label** — One concise sentence synthesised from the article titles.
+• **Theme Label** — One concise sentence synthesised from the article titles.
+[up to 5 bullets total, ordered largest cluster first]
+```
+
+Rules for bullets:
+- Theme Label: 2–4 words, Title Case, wrapped in `**` so the formatter can bold it.
+- Synthesise the titles — do NOT copy them verbatim.
+- Where relevant, draw on `outlier_titles` to add a niche angle.
+- No closing paragraph after the last bullet.
 
 ## Hard Constraints
 
 - **Maximum output: {{MAX_OUTPUT_CHARS}} characters** — keep it tight and concise.
-- Do NOT use markdown formatting (`**bold**`, `_italic_`, `# headers`).
+- Use `**text**` ONLY for bullet Theme Labels — nowhere else.
+- Do NOT use `_italic_` or `# headers`.
 - Do NOT hallucinate facts beyond what the article titles imply.
 - Do NOT include hyperlinks or URLs.
 - English only.

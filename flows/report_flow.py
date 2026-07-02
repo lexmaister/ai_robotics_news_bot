@@ -42,6 +42,7 @@ from src.db import (
 from src.analysis import (
     cluster_articles,
     build_analysis_prompt,
+    build_vector_stats_line,
     generate_report_via_openrouter,
 )
 from src.publishing import (
@@ -157,20 +158,26 @@ def fetch_embeddings_task(cfg: dict[str, Any]) -> list[EmbeddingRow]:
 
 
 @task(name="report-task4-generate-report")
-def generate_report_task(cfg: dict[str, Any], rows: list[EmbeddingRow]) -> str:
+def generate_report_task(
+    cfg: dict[str, Any], rows: list[EmbeddingRow]
+) -> dict[str, str]:
     """
     Task 4: Cluster articles and call the LLM to produce a report narrative.
 
     Returns:
-        Report text string (empty string if not enough data to report on).
+        Dict with keys:
+          - 'report_text': LLM-generated narrative (empty string if not enough data).
+          - 'vector_stats': compact clustering signal line for the Telegram post.
     """
     log = get_run_logger()
     settings = cfg["settings_obj"]
     env = cfg["env_obj"]
 
+    empty: dict[str, str] = {"report_text": "", "vector_stats": ""}
+
     if not rows:
         log.warning("No embedded articles available — skipping report generation")
-        return ""
+        return empty
 
     # --- Clustering ---
     clusters = cluster_articles(
@@ -185,13 +192,17 @@ def generate_report_task(cfg: dict[str, Any], rows: list[EmbeddingRow]) -> str:
             "No clusters passed the min_cluster_size=%d filter — skipping report",
             settings.report.min_cluster_size,
         )
-        return ""
+        return empty
 
     log.info(
         "Clustering: %d articles → %d clusters",
         len(rows),
         len(clusters),
     )
+
+    # Compact stats line appended verbatim to the Telegram post
+    vector_stats = build_vector_stats_line(clusters, len(rows))
+    log.info("Vector stats: %s", vector_stats)
 
     # --- Build prompt ---
     prompt = build_analysis_prompt(
@@ -217,13 +228,16 @@ def generate_report_task(cfg: dict[str, Any], rows: list[EmbeddingRow]) -> str:
     )
 
     log.info("Report generated: %d chars", len(report_text))
-    return report_text
+    return {"report_text": report_text, "vector_stats": vector_stats}
 
 
 @task(name="report-task5-post-to-telegram")
-def post_report_task(cfg: dict[str, Any], report_text: str) -> None:
+def post_report_task(cfg: dict[str, Any], result: dict[str, str]) -> None:
     """Task 5: Format and post the weekly report to the Telegram channel."""
     log = get_run_logger()
+
+    report_text = result.get("report_text", "")
+    vector_stats = result.get("vector_stats", "")
 
     if not report_text.strip():
         log.warning("Empty report text — nothing to post to Telegram")
@@ -235,6 +249,7 @@ def post_report_task(cfg: dict[str, Any], report_text: str) -> None:
     message = format_weekly_report_message(
         report_text,
         max_chars=settings.report.max_message_chars,
+        vector_stats=vector_stats,
     )
 
     log.info("Posting weekly report to Telegram (%d chars)", len(message))
@@ -291,8 +306,8 @@ def report_flow(
 
     if not skip_report:
         rows = fetch_embeddings_task(cfg)
-        report_text = generate_report_task(cfg, rows)
-        post_report_task(cfg, report_text)
+        result = generate_report_task(cfg, rows)
+        post_report_task(cfg, result)
     else:
         log.info("Report generation skipped (skip_report=True)")
 

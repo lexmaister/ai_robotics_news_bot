@@ -240,6 +240,31 @@ def _compute_vector_insights(
     return "\n".join(lines)
 
 
+def build_vector_stats_line(clusters: list[ClusterSummary], total_articles: int) -> str:
+    """
+    Compact single-line summary of clustering signal for the Telegram post.
+
+    Unlike _compute_vector_insights (which feeds the LLM prompt), this string
+    is appended verbatim to the Telegram message so readers see the actual data.
+    Example: '📊 Broad week · 5 clusters · Hardware leads 31% · Tightest: Security'
+    """
+    if not clusters or total_articles == 0:
+        return ""
+
+    n = len(clusters)
+    breadth = "Broad" if n >= 6 else "Moderate" if n >= 4 else "Focused"
+    top = clusters[0]
+    top_pct = round(top.size / total_articles * 100)
+    top_cat = top.top_categories[0] if top.top_categories else "—"
+    most_focused = min(clusters, key=lambda c: c.cohesion)
+    focused_cat = most_focused.top_categories[0] if most_focused.top_categories else "—"
+
+    return (
+        f"📊 {breadth} week · {n} clusters · "
+        f"{top_cat} leads {top_pct}% · Tightest: {focused_cat}"
+    )
+
+
 def build_analysis_prompt(
     *,
     template_path: Path,
