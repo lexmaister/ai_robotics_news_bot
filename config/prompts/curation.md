@@ -20,6 +20,7 @@ Articles already published recently — avoid selecting redundant topics:
 2. **Diversity** — Spread selections across different categories when possible.
 3. **No Redundancy** — Skip topics already covered in recent channel history.
 4. **Quality** — Prefer concrete developments over speculative or opinion pieces.
+5. **No Funding News** — Exclude articles primarily about funding rounds, investment amounts, valuations, or fundraising. The channel focuses on technology and product developments, not financial transactions. Only include funding news if tied to a major technical milestone or product launch.
 
 ## Output Format
 Call the `select_articles` tool with the IDs of your selected articles.
