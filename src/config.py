@@ -40,6 +40,7 @@ class EnvSettings(BaseSettings):
     postgres_password: SecretStr
     postgres_db: str
     openrouter_api_key: SecretStr
+    openrouter_proxy_url: str | None = None
     telegram_bot_token: SecretStr
     telegram_channel_id: str
     telegram_proxy_url: str | None = None

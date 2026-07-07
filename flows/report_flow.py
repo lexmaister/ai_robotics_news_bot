@@ -213,6 +213,7 @@ def generate_report_task(cfg: dict[str, Any], rows: list[EmbeddingRow]) -> str:
         temperature=settings.llm.analysis.temperature,
         prompt=prompt,
         max_output_chars=settings.llm.analysis.max_output_chars,
+        proxy_url=env.openrouter_proxy_url or None,
     )
 
     log.info("Report generated: %d chars", len(report_text))

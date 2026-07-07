@@ -260,6 +260,7 @@ def categorize_backlog_task(cfg: dict[str, Any]) -> dict[str, Any]:
             temperature=0.0,
             base_url=settings.llm.openrouter_base_url,
             timeout=llm_timeout,
+            proxy_url=env.openrouter_proxy_url or None,
         )
         return result.categories
 
@@ -415,6 +416,7 @@ def curate_articles_task(cfg: dict[str, Any]) -> dict[str, Any]:
             temperature=float(cur_cfg.temperature),
             base_url=settings.llm.openrouter_base_url,
             timeout=float(settings.llm.timeout),
+            proxy_url=env.openrouter_proxy_url or None,
         )
 
         log.info(
@@ -631,6 +633,7 @@ def embed_published_task(cfg: dict[str, Any]) -> dict[str, Any]:
             dimensions=dimensions,
             base_url=settings.llm.openrouter_base_url,
             timeout=float(settings.llm.timeout),
+            proxy_url=env.openrouter_proxy_url or None,
         )
 
         for article_id, vector in zip(ids, vectors):

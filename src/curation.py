@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Sequence
+import httpx
 from openai import OpenAI, OpenAIError
 
 # Keep this list in sync with config/prompts/categorization.md
@@ -72,6 +73,7 @@ def categorize_titles_via_openrouter(
     temperature: float,
     base_url: str,
     timeout: float,
+    proxy_url: str | None = None,
 ) -> CategorizationResult:
     """Return exactly one primary category per title (same order)."""
     prompt = build_categorization_prompt(template_path=template_path, titles=titles)
@@ -83,6 +85,7 @@ def categorize_titles_via_openrouter(
         temperature=temperature,
         base_url=base_url,
         timeout=timeout,
+        proxy_url=proxy_url,
     )
 
     categories = _parse_and_validate_categories(raw_text, titles)
@@ -98,6 +101,7 @@ def _call_openrouter(
     prompt: str,
     temperature: float,
     base_url: str,
+    proxy_url: str | None = None,
     timeout: float,
 ) -> str:
     """
@@ -108,10 +112,12 @@ def _call_openrouter(
     No max_tokens is set — the output is a small JSON array and the model
     handles it correctly without a cap.
     """
+    http_client = httpx.Client(proxy=proxy_url) if proxy_url else None
     client = OpenAI(
         base_url=base_url,
         api_key=api_key,
         timeout=timeout,
+        http_client=http_client,
     )
 
     resp = client.chat.completions.create(
@@ -276,6 +282,7 @@ def _call_openrouter_tool(
     base_url: str,
     tool: dict,
     timeout: float,
+    proxy_url: str | None = None,
 ) -> str:
     """
     Call OpenRouter using function/tool calling and return the raw tool-argument JSON.
@@ -288,7 +295,8 @@ def _call_openrouter_tool(
 
     Returns the raw arguments JSON string, e.g. '{"selected_ids": [42, 17, 93]}'.
     """
-    client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+    http_client = httpx.Client(proxy=proxy_url) if proxy_url else None
+    client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, http_client=http_client)
     tool_name = tool["function"]["name"]
 
     try:
@@ -387,6 +395,7 @@ def curate_articles_via_openrouter(
     temperature: float,
     base_url: str,
     timeout: float,
+    proxy_url: str | None = None,
 ) -> CurationResult:
     """
     Call OpenRouter to select articles for publication via tool/function calling.
@@ -419,6 +428,7 @@ def curate_articles_via_openrouter(
         base_url=base_url,
         tool=_SELECT_ARTICLES_TOOL,
         timeout=timeout,
+        proxy_url=proxy_url,
     )
 
     selected_ids = _parse_and_validate_selected_ids(

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import math
 
+import httpx
 from openai import OpenAI, OpenAIError
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ def embed_titles_via_openrouter(
     dimensions: int,
     base_url: str,
     timeout: float,
+    proxy_url: str | None = None,
 ) -> list[list[float]]:
     """
     Embed a list of article titles via the OpenRouter embeddings API.
@@ -84,7 +86,8 @@ def embed_titles_via_openrouter(
     if not titles:
         return []
 
-    client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+    http_client = httpx.Client(proxy=proxy_url) if proxy_url else None
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, http_client=http_client)
 
     # `dimensions` is intentionally omitted — not universally supported by OpenRouter models.
     response = client.embeddings.create(

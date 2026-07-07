@@ -29,6 +29,7 @@ import numpy as np
 from numpy import ndarray
 from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.preprocessing import normalize
+import httpx
 from openai import OpenAI, OpenAIError
 
 from src.db import EmbeddingRow
@@ -258,6 +259,7 @@ def generate_report_via_openrouter(
     temperature: float,
     prompt: str,
     max_output_chars: int,
+    proxy_url: str | None = None,
 ) -> str:
     """
     Call OpenRouter to generate the weekly report narrative from the cluster payload.
@@ -280,10 +282,12 @@ def generate_report_via_openrouter(
     Raises:
         openai.OpenAIError: on any API-level failure.
     """
+    http_client = httpx.Client(proxy=proxy_url) if proxy_url else None
     client = OpenAI(
         base_url=base_url,
         api_key=api_key,
         timeout=timeout,
+        http_client=http_client,
     )
 
     resp = client.chat.completions.create(

@@ -337,7 +337,13 @@ OPENROUTER_API_KEY=sk-or-xxxxxxxxxxxxx
 # Telegram
 TELEGRAM_BOT_TOKEN=123456:ABC-xxxxxxxxxxxxx
 TELEGRAM_CHANNEL_ID=-1001234567890
+
+# Proxy (both optional — leave blank or omit if not needed)
+TELEGRAM_PROXY_URL=          # proxy for Telegram Bot API calls
+OPENROUTER_PROXY_URL=        # proxy for all OpenRouter API calls (categorization, curation, embedding, report)
 ```
+
+Supported proxy formats: `http://user:pass@host:port`, `socks5://user:pass@host:port`.
 
 ---
 
