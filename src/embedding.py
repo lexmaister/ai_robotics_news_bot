@@ -8,7 +8,6 @@ Responsibilities:
   produce title vectors.
 - Return raw float vectors in input order; DB writes are handled by the caller.
 
-Model: nvidia/llama-nemotron-embed-vl-1b-v2:free (via OpenRouter)
 Output dimension: 1536 (must match VECTOR(1536) column in db/schema.sql).
 """
 

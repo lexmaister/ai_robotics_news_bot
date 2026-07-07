@@ -52,11 +52,11 @@ ai_robotics_news_bot/
 
 ## API Budget & Ingestion Strategy
 
-To operate entirely on the **Newsdata.io Free Tier** (200 credits/day), the bot uses a strict sampling and scheduling strategy:
+The ingestion pipeline runs on the **Newsdata.io Free Tier** (200 credits/day, 30 req/15 min):
 * **7 Sessions per Day:** Orchestrated by Prefect, running approximately every 3.5 hours.
-* **30 Requests per Session:** In each session, the bot randomly samples 5 domains from the whitelist and runs 6 broad topic queries against them (5 × 6 = 30 credits).
-* **State Management:** The exact state of the last fetch is saved locally in `data/last_news.json` so the pipeline can gracefully resume without fetching duplicate pages.
-* **Database Deduplication:** Handled safely via PostgreSQL `UNIQUE` constraints and `ON CONFLICT` skips.
+* **30 Requests per Session:** The bot randomly samples 5 domains from the whitelist and runs 6 broad topic queries against them (5 × 6 = 30 credits), filling the rate-limit window exactly.
+* **State Management:** Fetch state is saved in `data/last_news.json` between runs so the pipeline resumes without re-fetching duplicate pages.
+* **Database Deduplication:** Handled via PostgreSQL `UNIQUE` constraints and `ON CONFLICT` skips.
 
 ## Daily News Flow — 7 Tasks
 
@@ -106,14 +106,64 @@ A **separate Prefect deployment** (`report-flow/weekly`) runs once per week and 
 
 ## LLM Models (OpenRouter)
 
-The bot uses four models with different cost/quality tradeoffs:
+All models are routed through [OpenRouter](https://openrouter.ai/). The bot uses four models, one per role:
 
-- **Categorization (Task 4, high volume):** A fast, free/cheap model (e.g., `nvidia/nemotron-nano-9b-v2`) processes large batches of raw titles and assigns taxonomy labels (e.g., `"AI Policy"`, `"Humanoid Robots"`).
-- **Curation (Task 5, low volume):** A higher-quality model (e.g., `nvidia/nemotron-3-ultra-550b`) evaluates the categorized backlog and selects the best articles for publication, using recently published articles as diversity context.
-- **Embedding (Task 7, backlog):** A dedicated embedding model (`qwen/qwen3-embedding-8b`) converts published article titles into 1536-dim float vectors stored in the `articles.embedding` pgvector column. The model's native 4096-dim output is truncated to 1536 and L2-normalized in Python to match the `VECTOR(1536)` column. Dimension is configurable via `llm.embedding.dimensions` and must match the `VECTOR(N)` declaration in `db/schema.sql`.
-- **Analysis (Report Task 4, weekly):** A capable free/cheap model (e.g., `poolside/laguna-m.1:free`) receives the clustered trend payload and writes a short Telegram-ready narrative digest. Configured via `llm.analysis_model` and `llm.analysis.*` knobs.
+| Task | Model | Role |
+|------|-------|------|
+| Task 4 — Categorization | `meta-llama/llama-3.1-8b-instruct` | Fast batch labeling: assigns taxonomy categories (`"AI Policy"`, `"Humanoid Robots"`, …) to raw titles. High call volume. |
+| Task 5 — Curation | `google/gemma-4-31b-it` | Selects the best articles from the categorized backlog for publication via tool-calling; uses recently published articles as diversity context. |
+| Task 7 — Embedding | `qwen/qwen3-embedding-8b` | Converts published article titles to 1536-dim float vectors (pgvector). Native 4096-dim output is truncated to 1536 and L2-normalized. Dimension configurable via `llm.embedding.dimensions`; must match `VECTOR(N)` in `db/schema.sql`. |
+| Report Task 4 — Analysis | `deepseek/deepseek-v4-flash` | Receives the clustered trend payload and writes a Telegram-ready weekly narrative digest. |
 
-## Data Flow
+All model names are set in `config/settings.yml` (`llm.*_model` keys) and can be swapped without code changes.
+
+---
+
+## Model Traceability
+
+Every article carries full provenance for the two LLM steps that shape what gets published.
+
+### New DB columns (articles table)
+
+| Column | Type | Written by | Meaning |
+|--------|------|------------|---------|
+| `categorization_model` | `TEXT NULL` | Task 4 | OpenRouter model that assigned `category` (e.g. `meta-llama/llama-3.1-8b-instruct`) |
+| `curation_model` | `TEXT NULL` | Task 5 | OpenRouter model that selected the article for publication (e.g. `google/gemma-4-31b-it`) |
+
+Both columns are `NULL` for rows created before this migration (truthful: the model is historically unknown).
+
+### Migration for existing deployments
+
+For databases created before this schema change, run the bundled migration script **once**:
+
+```bash
+docker exec -i ai_robotics_news_bot-postgres-1 \
+    psql -U prefect -d newsbot < db/migrate_add_model_traceability.sql
+```
+
+The script is idempotent (`ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`) — safe to re-run.
+
+**Optional backfill** — if you want old rows populated with your current model names rather than `NULL`, uncomment and adapt the `UPDATE` statements at the bottom of `db/migrate_add_model_traceability.sql` before running it.
+
+### Telegram hashtag format
+
+Each Telegram post ends with a hashtag identifying the curation model:
+
+```
+#curation_model_<slug>
+```
+
+The slug is derived deterministically: lowercase, non-alphanumeric characters replaced with `_`, consecutive underscores collapsed.
+
+| Model | Hashtag |
+|-------|---------|
+| `google/gemma-4-31b-it` | `#curation_model_google_gemma_4_31b_it` |
+| `meta-llama/llama-3.1-8b-instruct` | `#curation_model_meta_llama_llama_3_1_8b_instruct` |
+| `deepseek/deepseek-v3` | `#curation_model_deepseek_deepseek_v3` |
+
+Swapping `curation_model` in `config/settings.yml` automatically produces a new hashtag with no code change required.
+
+---
 
 ```
  .env                    config/settings.yml          config/sources_whitelist.yml
@@ -438,7 +488,24 @@ See how many published articles have been embedded versus still awaiting a vecto
 ```bash
 docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT (embedding IS NOT NULL) as has_embedding, COUNT(*) FROM articles WHERE publicated = TRUE GROUP BY has_embedding;"
 ```
----
+
+**Count published posts by curation model**
+Track which model was responsible for each published article:
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT COALESCE(curation_model, '(unknown — pre-migration)') AS model, COUNT(*) AS published FROM articles WHERE publicated = TRUE GROUP BY curation_model ORDER BY published DESC;"
+```
+
+**Count categorized rows by categorization model**
+See the volume of titles each model has labeled:
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT COALESCE(categorization_model, '(unknown — pre-migration)') AS model, COUNT(*) AS categorized FROM articles WHERE category IS NOT NULL GROUP BY categorization_model ORDER BY categorized DESC;"
+```
+
+**Find rows with missing model provenance** (old data or potential bugs)
+Detect articles that were categorized or published before migration, or rows where model columns were unexpectedly left NULL:
+```bash
+docker exec -it ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot -c "SELECT COUNT(*) FILTER (WHERE category IS NOT NULL AND categorization_model IS NULL) AS categorized_no_model, COUNT(*) FILTER (WHERE publicated = TRUE AND curation_model IS NULL) AS published_no_model FROM articles;"
+```
 
 ## Persistence and Backups
 

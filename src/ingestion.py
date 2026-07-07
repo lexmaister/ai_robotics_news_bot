@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # last_news.json persistence
 # ----------------------------
 
+
 class LastNews:
     """
     Persisted ingestion state used for round-robin rotation.
@@ -59,8 +60,11 @@ class LastNews:
         self._load()
 
     def _load(self) -> None:
+        """Read last_news.json from disk and populate internal state. Silently defaults when file is absent."""
         if not self.path.exists():
-            logger.warning("last_news missing: %s (defaulting domain_group=%s)", self.path, "A")
+            logger.warning(
+                "last_news missing: %s (defaulting domain_group=%s)", self.path, "A"
+            )
             return
 
         try:
@@ -82,6 +86,7 @@ class LastNews:
         )
 
     def _save(self) -> None:
+        """Serialise current state to last_news.json. Raises on missing/unwritable target directory."""
         parent = self.path.parent
         if not parent.exists():
             raise FileNotFoundError(
@@ -89,7 +94,9 @@ class LastNews:
                 "Check Docker volume mapping for /app/data."
             )
         if not parent.is_dir():
-            raise NotADirectoryError(f"LastNews save parent is not a directory: {parent}")
+            raise NotADirectoryError(
+                f"LastNews save parent is not a directory: {parent}"
+            )
 
         payload = {
             "articles": self._articles,
@@ -99,7 +106,9 @@ class LastNews:
         }
 
         try:
-            self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            self.path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
         except PermissionError as exc:
             raise PermissionError(
                 f"LastNews file is not writable: {self.path}. "
@@ -122,7 +131,13 @@ class LastNews:
     def collected_dt(self) -> str | None:
         return self._collected_dt
 
-    def update(self, *, articles: list[dict[str, Any]], request_params: dict[str, Any], domain_group: str) -> None:
+    def update(
+        self,
+        *,
+        articles: list[dict[str, Any]],
+        request_params: dict[str, Any],
+        domain_group: str,
+    ) -> None:
         """Update persisted state and write last_news.json (UTC timestamp)."""
         self._articles = articles
         self._request_params = request_params
@@ -134,6 +149,7 @@ class LastNews:
 # ----------------------------
 # ingestion core
 # ----------------------------
+
 
 class RequestMeta(TypedDict):
     group: str
@@ -152,6 +168,7 @@ class IngestionResult:
     - "ok": requests were executed
     - "no_plan": chosen group had no domains; no API calls were made
     """
+
     status: Literal["ok", "no_plan"]
     active_group: str
     requests_planned: int
@@ -188,7 +205,11 @@ class NewsDataManager:
         if not group_names:
             raise ValueError("whitelist_groups is empty")
 
-        next_idx = (group_names.index(last_group) + 1) % len(group_names) if last_group in group_names else 0
+        next_idx = (
+            (group_names.index(last_group) + 1) % len(group_names)
+            if last_group in group_names
+            else 0
+        )
         self.active_group = group_names[next_idx]
         self.active_domains = whitelist_groups.get(self.active_group, [])
 
@@ -209,7 +230,9 @@ class NewsDataManager:
         if ns.excludefield:
             base_params["excludefield"] = ",".join(ns.excludefield)
 
-        sampled_domains = self.rng.sample(domains, k=min(self.settings.session.domains_per_session, len(domains)))
+        sampled_domains = self.rng.sample(
+            domains, k=min(self.settings.session.domains_per_session, len(domains))
+        )
 
         plan: list[RequestMeta] = []
         for domain in sampled_domains:
@@ -232,26 +255,40 @@ class NewsDataManager:
 
         return plan[: self.settings.session.credits], len(sampled_domains)
 
-    def normalize_article(self, article: dict[str, Any], meta: RequestMeta) -> dict[str, Any]:
+    def normalize_article(
+        self, article: dict[str, Any], meta: RequestMeta
+    ) -> dict[str, Any]:
         """Normalize API result and attach request metadata, respecting exclusions."""
         excluded = set(self.settings.newsdata.excludefield)
-        
+
         # Complete list of possible API fields
         api_fields = [
-            "article_id", "title", "description", "link", "pubDate",
-            "source_id", "source_name", "category", "country", "language",
-            "keywords", "creator", "image_url", "video_url", "source_icon"
+            "article_id",
+            "title",
+            "description",
+            "link",
+            "pubDate",
+            "source_id",
+            "source_name",
+            "category",
+            "country",
+            "language",
+            "keywords",
+            "creator",
+            "image_url",
+            "video_url",
+            "source_icon",
         ]
-        
+
         # Extract only the API fields that are NOT in the excludefield list
         keys_to_extract = [k for k in api_fields if k not in excluded]
         normalized = {k: article.get(k) for k in keys_to_extract}
-        
+
         # Attach internal metadata
         normalized["request_domain"] = meta["domain"]
         normalized["request_query_name"] = meta["query_name"]
         normalized["request_query_field"] = meta["query_field"]
-            
+
         return normalized
 
     def fetch_articles(self, plan: list[RequestMeta]) -> list[dict[str, Any]]:
@@ -276,7 +313,7 @@ class NewsDataManager:
                     resp = client.latest_api(**meta["params"])
                     results = resp.get("results") or []
                     articles.extend(self.normalize_article(a, meta) for a in results)
-                    
+
                 except NewsdataRateLimitError as e:
                     # Gracefully catch the 429 error (limit exceeded / out of credits)
                     logger.warning(
@@ -284,10 +321,10 @@ class NewsDataManager:
                         i,
                         total,
                         len(articles),
-                        getattr(e, 'retry_after', 'unknown')
+                        getattr(e, "retry_after", "unknown"),
                     )
                     break  # Exit the loop, but DO NOT raise. Return what we have so far.
-                    
+
                 except Exception:
                     # Fail-fast on unexpected errors (e.g., 500 Server Error, Network Error)
                     logger.exception(
