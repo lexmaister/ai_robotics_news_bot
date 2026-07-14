@@ -321,7 +321,17 @@ http://127.0.0.1:4200/dashboard
 - PREFECT_UI_API_URL: http://127.0.0.1:4200/api tells the browser-based UI
   to call the API at your local tunneled address instead of the default 0.0.0.0.
 
-### 5. Start the worker
+### 5. Initialize the database schema
+
+The `newsbot` database is created automatically on first start (by `db/init/01-create-databases.sql`), but the application schema must be applied manually:
+
+```bash
+docker exec -i ai_robotics_news_bot-postgres-1 psql -U prefect -d newsbot < db/schema.sql
+```
+
+This creates the `articles` table, the `vector` extension, and all required indexes. The command is idempotent (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`) — safe to re-run.
+
+### 6. Start the worker
 
 ```bash
 docker compose --profile worker up -d
@@ -330,7 +340,7 @@ docker compose --profile worker up -d
 docker compose logs -f worker
 ```
 
-### 6. Tear down
+### 7. Tear down
 
 ```bash
 # Stop everything
@@ -340,7 +350,7 @@ docker compose --profile server --profile worker down
 docker compose --profile server --profile worker down -v
 ```
 
-### 5a. (Optional) Start worker with external network for outbound traffic
+### 6a. (Optional) Start worker with external network for outbound traffic
 
 When outbound API calls must be routed through a specific network interface,
 the worker can join a pre-existing Docker network (`shared_vpn`) **in addition
