@@ -44,10 +44,10 @@ groups:
         priority: 7
         categories: [science, research, AI]
         description: Science and research angle on AI, technology breakthroughs and discoveries
-      - domain: bloomberg.com
+      - domain: axios.com
         priority: 7
         categories: [industry, funding, regulation]
-        description: Breaking AI industry news, funding rounds, regulation and market developments
+        description: Concise AI industry scoops, funding rounds, policy and regulation coverage
       - domain: benzinga.com
         priority: 5
         categories: [fintech, markets, AI]
