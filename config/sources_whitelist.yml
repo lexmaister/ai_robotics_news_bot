@@ -72,10 +72,11 @@ groups:
         priority: 7
         categories: [Enterprise AI, Markets, Hardware]
         description: Tech business publication covering startups, venture capital, cloud, AI, and enterprise industry developments
-      - domain: techbullion.com
+      - domain: siliconangle.com
         priority: 5
-        categories: [startups, AI, fintech]
-        description: AI, fintech and startup news, technology industry coverage
+        categories: [startups, AI, enterprise]
+        description: Enterprise AI, cloud and startup funding coverage, with fast news on product launches and deals
+
 
   D:
     # Priority sum: 37 | Focus: Engineering + Startups/VC + Tech Media + Macro Policy + Enterprise B2B
