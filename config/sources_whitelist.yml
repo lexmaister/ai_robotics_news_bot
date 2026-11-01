@@ -89,10 +89,11 @@ groups:
         priority: 8
         categories: [startups, AI, funding]
         description: Technology startups, investments, software and high-tech news
-      - domain: thenextweb.com
+      - domain: engadget.com
         priority: 7
-        categories: [startups, AI, tech]
-        description: New technologies and startups, creative tech media with global events coverage
+        categories: [AI, tech, consumer]
+        description: Tech media covering AI, robotics, gadgets and consumer technology, plus industry news
+
       - domain: economist.com
         priority: 7
         categories: [policy, economics, AI]
